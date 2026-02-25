@@ -1,0 +1,23 @@
+# Rebranding Tool - .gitignore
+
+# PyInstaller
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs applicazione
+logs/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# Backup file generati dal tool
+*.bak
