@@ -3,90 +3,95 @@
 
 """
 Script per la compilazione di Rebranding Tool con PyInstaller.
-Segue lo stesso pattern di EmailSender/build.py.
 """
 
+from __future__ import annotations
+
 import os
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 
+#: PyInstaller usa ';' su Windows e ':' altrove per separare sorgente e
+#: destinazione in --add-data. Il valore era cablato a ';' e rompeva la build
+#: su qualunque piattaforma non Windows.
+DATA_SEP = os.pathsep
+
+
+def python_launcher() -> list[str]:
+    """
+    Comando da usare per invocare Python.
+
+    `py` esiste solo su Windows e non nei virtual environment: si ripiega
+    sull'interprete che sta eseguendo questo script, che è sempre corretto.
+    """
+    if os.name == "nt":
+        try:
+            probe = subprocess.run(["py", "--version"], capture_output=True, text=True)
+            if probe.returncode == 0:
+                return ["py"]
+        except (FileNotFoundError, OSError):
+            pass
+    return [sys.executable]
+
 
 class RebrandingToolBuilder:
-    def __init__(self):
+    def __init__(self) -> None:
         self.app_name = "RebrandingTool"
         self.main_script = "main.py"
         self.output_dir = "dist"
+        self.python = python_launcher()
+        self.exe_suffix = ".exe" if os.name == "nt" else ""
+
+    # ------------------------------------------------------------------
+
+    def _run(self, args: list[str], **kwargs) -> subprocess.CompletedProcess:
+        return subprocess.run(self.python + args, capture_output=True, text=True, **kwargs)
+
+    def _ensure_module(self, module: str, package: str) -> bool:
+        probe = self._run(["-c", f"import {module}"])
+        if probe.returncode == 0:
+            print(f"✅ {package} disponibile")
+            return True
+
+        print(f"⚠️  {package} non trovato, installazione in corso...")
+        install = self._run(["-m", "pip", "install", package])
+        if install.returncode != 0:
+            print(f"❌ Errore installazione {package}: {install.stderr.strip()[-500:]}")
+            return False
+        print(f"✅ {package} installato")
+        return True
 
     def check_prerequisites(self) -> bool:
         print("🔍 Verifica prerequisiti...")
+        print(f"✅ Python: {sys.version.split()[0]} ({' '.join(self.python)})")
 
-        # Python
-        try:
-            result = subprocess.run(["py", "--version"], capture_output=True, text=True)
-            if result.returncode != 0:
-                print("❌ Python non trovato!")
-                return False
-            print(f"✅ Python trovato: {result.stdout.strip()}")
-        except FileNotFoundError:
-            print("❌ Comando 'py' non trovato!")
+        if not self._ensure_module("PyInstaller", "pyinstaller"):
             return False
-
-        # PyInstaller
-        try:
-            result = subprocess.run(
-                ["py", "-m", "PyInstaller", "--version"], capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                print("⚠️  PyInstaller non trovato, installazione in corso...")
-                inst = subprocess.run(
-                    ["py", "-m", "pip", "install", "pyinstaller"], capture_output=True, text=True
-                )
-                if inst.returncode != 0:
-                    print(f"❌ Errore installazione PyInstaller: {inst.stderr}")
-                    return False
-                print("✅ PyInstaller installato")
-            else:
-                print(f"✅ PyInstaller trovato: {result.stdout.strip()}")
-        except FileNotFoundError:
-            print("❌ Impossibile verificare PyInstaller")
+        if not self._ensure_module("PIL", "pillow"):
             return False
+        # ttkbootstrap è opzionale: l'app funziona anche senza, con i temi ttk.
+        self._ensure_module("ttkbootstrap", "ttkbootstrap")
 
-        # Pillow
-        try:
-            result = subprocess.run(
-                ["py", "-c", "from PIL import Image; print('ok')"], capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                print("⚠️  Pillow non trovato, installazione in corso...")
-                subprocess.run(["py", "-m", "pip", "install", "pillow"], capture_output=True)
-                print("✅ Pillow installato")
-            else:
-                print("✅ Pillow disponibile")
-        except Exception:
-            pass
-
-        # File principali
-        required = [self.main_script, "rebranding_tool.py"]
-        for f in required:
-            if not os.path.exists(f):
-                print(f"❌ File non trovato: {f}")
+        for required in (self.main_script, "rebranding_tool.py", "core.py"):
+            if not os.path.exists(required):
+                print(f"❌ File non trovato: {required}")
                 return False
-            print(f"✅ File trovato: {f}")
+            print(f"✅ File trovato: {required}")
 
         return True
 
-    def clean_temp_directories(self):
+    def clean_temp_directories(self) -> None:
         print("🧹 Pulizia cartelle temporanee...")
-        for temp_dir in ["build", "dist", "__pycache__"]:
+        for temp_dir in ("build", "dist", "__pycache__"):
             if os.path.exists(temp_dir):
                 try:
                     shutil.rmtree(temp_dir)
                     print(f"  ✅ {temp_dir} rimosso")
-                except Exception as e:
-                    print(f"  ⚠️  Impossibile rimuovere {temp_dir}: {e}")
+                except OSError as exc:
+                    print(f"  ⚠️  Impossibile rimuovere {temp_dir}: {exc}")
         time.sleep(1)
 
     def build_executable(self) -> str | None:
@@ -96,25 +101,19 @@ class RebrandingToolBuilder:
             "tkinter", "tkinter.ttk", "tkinter.filedialog",
             "tkinter.messagebox", "tkinter.scrolledtext",
             "PIL", "PIL.Image", "PIL.ImageTk",
-            "pathlib", "fnmatch", "shutil", "threading",
-            "logging", "datetime", "queue", "os", "sys",
-            "ttkbootstrap", "ttkbootstrap.themes", "ttkbootstrap.style", "ttkbootstrap.widgets",
+            # PyInstaller non lo trova da solo: senza, ImageTk fallisce a
+            # runtime con "No module named 'PIL._tkinter_finder'" e nel .exe
+            # spariscono banner e anteprime.
+            "PIL._tkinter_finder",
+            "core", "rebranding_tool",
         ]
 
         add_data = []
-        if os.path.exists("sace.ico"):
-            add_data.append("sace.ico;.")
-        if os.path.exists("banner.jpg"):
-            add_data.append("banner.jpg;.")
-
-        # Includi risorse ttkbootstrap
-        try:
-            import ttkbootstrap
-            tb_dir = Path(ttkbootstrap.__file__).parent
-            add_data.append(f"{tb_dir};ttkbootstrap")
-            print(f"✅ Risorse ttkbootstrap incluse: {tb_dir}")
-        except Exception as e:
-            print(f"⚠️  ttkbootstrap non includibile: {e}")
+        for asset in ("sace.ico", "banner.jpg"):
+            if os.path.exists(asset):
+                add_data.append(f"{asset}{DATA_SEP}.")
+            else:
+                print(f"⚠️  Risorsa mancante, non inclusa: {asset}")
 
         excludes = [
             "matplotlib", "numpy", "pandas", "scipy",
@@ -124,67 +123,75 @@ class RebrandingToolBuilder:
         ]
 
         cmd = [
-            "py", "-m", "PyInstaller",
+            "-m", "PyInstaller",
             "--onefile",
             "--windowed",
             f"--name={self.app_name}",
             "--noconfirm",
+            "--clean",
         ]
 
         if os.path.exists("sace.ico"):
             cmd.append("--icon=sace.ico")
 
         for imp in hidden_imports:
-            cmd.extend(["--hidden-import", imp])
-
-        cmd.extend(["--collect-all", "ttkbootstrap"])
-        cmd.extend(["--collect-submodules", "ttkbootstrap"])
-        cmd.extend(["--collect-data", "ttkbootstrap"])
-
+            cmd += ["--hidden-import", imp]
         for data in add_data:
-            cmd.extend(["--add-data", data])
-
+            cmd += ["--add-data", data]
         for exc in excludes:
-            cmd.extend(["--exclude-module", exc])
+            cmd += ["--exclude-module", exc]
+
+        # --collect-all raccoglie moduli, sottomoduli e risorse in un colpo solo.
+        # La versione precedente lo combinava con --add-data sulla stessa
+        # cartella e con --collect-submodules/--collect-data, duplicando i file.
+        if self._run(["-c", "import ttkbootstrap"]).returncode == 0:
+            cmd += ["--collect-all", "ttkbootstrap"]
+            print("✅ Risorse ttkbootstrap incluse")
 
         cmd.append(self.main_script)
 
         print("🚀 Avvio compilazione...")
-
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-
-            if result.returncode == 0:
-                exe_path = os.path.join("dist", f"{self.app_name}.exe")
-                if os.path.exists(exe_path):
-                    size_mb = os.path.getsize(exe_path) / (1024 * 1024)
-                    print(f"✅ Compilazione completata!")
-                    print(f"📁 Eseguibile: {exe_path}")
-                    print(f"📏 Dimensione: {size_mb:.1f} MB")
-                    return exe_path
-                else:
-                    print("❌ Eseguibile non trovato dopo compilazione")
-                    return None
-            else:
-                print(f"❌ Errore compilazione (codice {result.returncode}):")
-                if result.stdout:
-                    print(f"   STDOUT: {result.stdout[-2000:]}")
-                if result.stderr:
-                    print(f"   STDERR: {result.stderr[-2000:]}")
-                return None
-
+            result = self._run(cmd, timeout=900)
         except subprocess.TimeoutExpired:
-            print("❌ Timeout compilazione (>10 minuti)")
-            return None
-        except Exception as exc:
-            print(f"❌ Errore imprevisto: {exc}")
+            print("❌ Timeout compilazione (>15 minuti)")
             return None
 
-    def create_distribution(self, exe_path: str):
+        if result.returncode != 0:
+            print(f"❌ Errore compilazione (codice {result.returncode}):")
+            if result.stdout:
+                print(f"   STDOUT: {result.stdout[-2000:]}")
+            if result.stderr:
+                print(f"   STDERR: {result.stderr[-2000:]}")
+            return None
+
+        exe_path = os.path.join(self.output_dir, f"{self.app_name}{self.exe_suffix}")
+        if not os.path.exists(exe_path):
+            print(f"❌ Eseguibile non trovato dopo la compilazione: {exe_path}")
+            return None
+
+        size_mb = os.path.getsize(exe_path) / (1024 * 1024)
+        print("✅ Compilazione completata!")
+        print(f"📁 Eseguibile: {exe_path}")
+        print(f"📏 Dimensione: {size_mb:.1f} MB")
+        return exe_path
+
+    def create_distribution(self, exe_path: str) -> bool:
         print("📦 Preparazione distribuzione...")
-        logs_dir = os.path.join("dist", "logs")
+        logs_dir = os.path.join(self.output_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        print(f"  📁 Cartella logs creata")
+        print(f"  📁 Cartella creata: {logs_dir}")
+
+        readme = Path(self.output_dir) / "LEGGIMI.txt"
+        readme.write_text(
+            "Rebranding Tool - SACE S.p.A\n"
+            "============================\n\n"
+            f"Eseguibile: {os.path.basename(exe_path)}\n"
+            "I log vengono scritti nella cartella 'logs' accanto all'eseguibile.\n"
+            "Se l'eseguibile si trova in un percorso di sola lettura, i log\n"
+            "finiscono in %LOCALAPPDATA%\\RebrandingTool\\logs.\n",
+            encoding="utf-8",
+        )
         return True
 
     def build(self) -> bool:
@@ -194,7 +201,7 @@ class RebrandingToolBuilder:
         print()
 
         if not self.check_prerequisites():
-            print("\n❌ BUILD FALLITO: Prerequisiti non soddisfatti")
+            print("\n❌ BUILD FALLITO: prerequisiti non soddisfatti")
             return False
 
         print()
@@ -203,7 +210,7 @@ class RebrandingToolBuilder:
 
         exe_path = self.build_executable()
         if not exe_path:
-            print("\n❌ BUILD FALLITO: Errore durante la compilazione")
+            print("\n❌ BUILD FALLITO: errore durante la compilazione")
             return False
 
         print()
@@ -213,25 +220,23 @@ class RebrandingToolBuilder:
         print("   BUILD COMPLETATO CON SUCCESSO!")
         print("=" * 55)
         print(f"📁 Eseguibile: {exe_path}")
-        print(f"📁 Logs: dist/logs/")
+        print(f"📁 Logs: {os.path.join(self.output_dir, 'logs')}")
         print()
         print("✅ L'applicazione è pronta per la distribuzione!")
         return True
 
 
-def main():
+def main() -> int:
     builder = RebrandingToolBuilder()
     try:
-        success = builder.build()
-        if not success:
-            sys.exit(1)
+        return 0 if builder.build() else 1
     except KeyboardInterrupt:
         print("\n⚠️  Operazione interrotta dall'utente")
-        sys.exit(1)
+        return 1
     except Exception as exc:
         print(f"\n❌ Errore imprevisto: {exc}")
-        sys.exit(1)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
