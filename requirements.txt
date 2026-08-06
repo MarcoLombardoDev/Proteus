@@ -1,3 +1,12 @@
-pillow
-pyinstaller
-ttkbootstrap
+# Rebranding Tool - dipendenze di runtime
+#
+# pillow >= 9.1 e' obbligatorio: Image.Resampling e' stato introdotto li'.
+pillow>=9.1,<13
+
+# ttkbootstrap e' opzionale (l'app funziona con i temi ttk standard) ma
+# migliora l'aspetto. La 2.x ha rimosso il supporto a `bootstyle` sui widget
+# ttk standard: l'app non lo usa piu', quindi entrambe le major sono ok.
+ttkbootstrap>=1.10
+
+# Necessario solo per generare l'eseguibile (compile.bat / build.py).
+pyinstaller>=5.13

@@ -1,0 +1,7 @@
+# Dipendenze per lo sviluppo e i test.
+# Installa prima quelle di runtime:  pip install -r requirements.txt
+-r requirements.txt
+
+pytest>=7.4
+# Evita che un test GUI che apre una finestra modale blocchi la suite.
+pytest-timeout>=2.1

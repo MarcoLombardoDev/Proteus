@@ -8,8 +8,19 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Logs applicazione
+# Logs e configurazione locale dell'applicazione
 logs/
+config/
+
+# Ambienti virtuali
+.venv/
+venv/
+env/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Editor / OS
 .vscode/
