@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-Available-green.svg)](#license--commercial-licensing)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-107-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-116-brightgreen.svg)](#development)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -334,7 +334,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 107 tests (logic, GUI, i18n)
+├── tests/                        # 116 tests (logic, GUI, i18n, build)
 ├── LICENSE                       # AGPL-3.0
 └── CLA.md                        # Contributor License Agreement
 ```
@@ -374,13 +374,14 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **107 tests** across three files:
+The suite is **116 tests** across four files:
 
 | File | Covers |
 |---|---|
 | `tests/test_core.py` | Scanning, matching, atomic replacement, backups, restore, CSV, settings, plus an end-to-end campaign |
 | `tests/test_gui.py` | Startup, the full wizard flow, dry run, row toggling, sorting, manual override, restore, language switching, shutdown |
 | `tests/test_i18n.py` | Translation layer, catalogue completeness and placeholder integrity |
+| `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
 
 GUI tests run headless and are skipped automatically where no display exists. A `conftest`
 fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`

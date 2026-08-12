@@ -20,6 +20,27 @@ from pathlib import Path
 DATA_SEP = os.pathsep
 
 
+def force_utf8_output() -> None:
+    """
+    Make stdout and stderr able to carry the emoji used in the progress output.
+
+    On Windows the default encoding is a legacy code page — cp1252 on the CI
+    runners, cp850 in a plain console — where printing an emoji raises
+    UnicodeEncodeError. That killed the build on its very first status line,
+    before any actual work started, and then killed the error handler too when
+    it tried to report the failure with another emoji.
+
+    `errors="replace"` keeps this safe even where UTF-8 is unavailable: an
+    unrepresentable character degrades to a placeholder instead of raising.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            # Not a reconfigurable text stream (redirected, wrapped, closed).
+            pass
+
+
 def python_launcher() -> list[str]:
     """
     Command used to invoke Python.
@@ -227,6 +248,9 @@ class RebrandingToolBuilder:
 
 
 def main() -> int:
+    # Before anything is printed: the first status line contains an emoji.
+    force_utf8_output()
+
     builder = RebrandingToolBuilder()
     try:
         return 0 if builder.build() else 1
