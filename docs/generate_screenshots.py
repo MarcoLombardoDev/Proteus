@@ -24,6 +24,7 @@ Requires `mss` for the screen capture:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import shutil
 import sys
@@ -115,13 +116,11 @@ def main(argv: list[str]) -> int:
               "  xvfb-run -a python docs/generate_screenshots.py", file=sys.stderr)
         return 1
 
-    try:
-        import mss  # noqa: F401
-    except ImportError:
+    if importlib.util.find_spec("mss") is None:
         print("The 'mss' package is required: pip install mss", file=sys.stderr)
         return 1
 
-    workdir = tempfile.mkdtemp(prefix="rebranding_shots_")
+    workdir = tempfile.mkdtemp(prefix="proteus_shots_")
     try:
         import tkinter as tk
 

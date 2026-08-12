@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Rebranding Tool - application entry point.
+Proteus - Rebranding Tool: application entry point.
 """
 
 import os

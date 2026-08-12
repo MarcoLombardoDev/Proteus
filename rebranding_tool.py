@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Rebranding Tool - bulk replacement of logo and graphic files.
+Proteus - Rebranding Tool: bulk replacement of logo and graphic files.
 Graphical user interface.
 
 The application logic (scanning, matching, replacement) lives in `core.py` and
@@ -28,7 +28,9 @@ import core
 import i18n
 from core import (
     APP_NAME,
+    APP_TAGLINE,
     APP_VERSION,
+    LICENSE_NOTICE,
     FileInfo,
     Match,
     OperationCancelled,
@@ -142,7 +144,7 @@ class RebrandingToolApp:
     # ------------------------------------------------------------------
 
     def _apply_window_chrome(self):
-        self.root.title(f"{APP_NAME} {APP_VERSION}")
+        self.root.title(f"{APP_NAME} - {APP_TAGLINE} {APP_VERSION}")
         self.root.geometry("1150x780")
         self.root.minsize(940, 660)
 
@@ -317,9 +319,11 @@ class RebrandingToolApp:
     # ------------------------------------------------------------------
 
     def _create_widgets(self):
-        # The status bar must be packed *before* the notebook: in Tk whatever
+        # Both bottom bars must be packed *before* the notebook: in Tk whatever
         # comes first reserves its space, and a notebook with expand=True would
-        # squeeze the bar until its progressbar and button are clipped.
+        # squeeze them until their contents are clipped. The footer goes first so
+        # it ends up below the status bar.
+        self._build_footer()
         self._build_status_bar()
 
         self.notebook = ttk.Notebook(self.root)
@@ -350,6 +354,26 @@ class RebrandingToolApp:
         self._build_replace_tab(self._frame_replace)
 
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+    def _build_footer(self):
+        """
+        Fixed licence notice along the bottom of the window.
+
+        Deliberately not translated: it is a legal notice rather than interface
+        copy, and showing it is how the application meets the "Appropriate
+        Legal Notices" requirement of AGPL-3.0 section 5.
+        """
+        footer = ttk.Frame(self.root)
+        footer.pack(fill=tk.X, side=tk.BOTTOM, padx=8, pady=(0, 4))
+
+        self._footer_label = ttk.Label(
+            footer,
+            text=LICENSE_NOTICE,
+            font=("Arial", 8),
+            foreground="#8a94a0",
+            anchor=tk.CENTER,
+        )
+        self._footer_label.pack(fill=tk.X)
 
     def _build_status_bar(self):
         status_bar = ttk.Frame(self.root, relief=tk.SUNKEN)

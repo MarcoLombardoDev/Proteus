@@ -1,7 +1,7 @@
 @echo off
 setlocal
 echo ========================================
-echo   REBRANDING TOOL - INSTALL DEPENDENCIES
+echo   PROTEUS - INSTALL DEPENDENCIES
 echo ========================================
 echo.
 

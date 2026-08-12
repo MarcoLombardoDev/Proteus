@@ -67,6 +67,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RebrandingTool-windows
-          path: dist/RebrandingTool.exe
+          name: Proteus-windows
+          path: dist/Proteus.exe
           if-no-files-found: error

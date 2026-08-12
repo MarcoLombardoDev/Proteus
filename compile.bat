@@ -1,7 +1,7 @@
 @echo off
 setlocal
 echo ========================================
-echo   REBRANDING TOOL - BUILD EXECUTABLE
+echo   PROTEUS - BUILD EXECUTABLE
 echo ========================================
 echo.
 
