@@ -1,4 +1,4 @@
-# Rebranding Tool - runtime dependencies
+# Proteus - runtime dependencies
 #
 # pillow >= 9.1 is mandatory: Image.Resampling was introduced there.
 pillow>=9.1,<13

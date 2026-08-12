@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Build script for Rebranding Tool, using PyInstaller.
+Build script for Proteus - Rebranding Tool, using PyInstaller.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def python_launcher() -> list[str]:
 
 class RebrandingToolBuilder:
     def __init__(self) -> None:
-        self.app_name = "RebrandingTool"
+        self.app_name = "Proteus"
         self.main_script = "main.py"
         self.output_dir = "dist"
         self.python = python_launcher()
@@ -184,19 +184,19 @@ class RebrandingToolBuilder:
 
         readme = Path(self.output_dir) / "READ_ME_FIRST.txt"
         readme.write_text(
-            "Rebranding Tool\n"
-            "===============\n\n"
+            "Proteus - Rebranding Tool\n"
+            "=========================\n\n"
             f"Executable: {os.path.basename(exe_path)}\n"
             "Logs are written to the 'logs' folder next to the executable.\n"
             "If the executable lives in a read-only location, logs go to\n"
-            "%LOCALAPPDATA%\\RebrandingTool\\logs instead.\n",
+            "%LOCALAPPDATA%\\Proteus\\logs instead.\n",
             encoding="utf-8",
         )
         return True
 
     def build(self) -> bool:
         print("=" * 55)
-        print("   REBRANDING TOOL - BUILD")
+        print("   PROTEUS - BUILD")
         print("=" * 55)
         print()
 

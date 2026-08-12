@@ -1,9 +1,9 @@
 # Contributor License Agreement (CLA)
 
-**Rebranding Tool — Individual Contributor License Agreement**  
+**Proteus — Individual Contributor License Agreement**  
 Version 1.0, August 2026
 
-Thank you for your interest in contributing to **Rebranding Tool** (the "Project"), maintained by **Marco Lombardo** (the "Project Owner").
+Thank you for your interest in contributing to **Proteus** (the "Project"), maintained by **Marco Lombardo** (the "Project Owner").
 
 This Contributor License Agreement ("Agreement") documents the rights granted by contributors to the Project Owner. This is a legally binding document, so please read it carefully before agreeing. This Agreement protects both you (the contributor) and the Project Owner by clarifying the intellectual property rights associated with your contributions.
 
@@ -17,8 +17,8 @@ By submitting a Pull Request, filing an Issue with a proposed fix, or otherwise 
 
 - **"You"** (or **"Contributor"**) means the individual or legal entity that submits a Contribution to the Project Owner. If a legal entity is signing, "You" includes all entities that control, are controlled by, or are under common control with that entity.
 - **"Contribution"** means any original work of authorship, including but not limited to: source code, object code, patches, bug fixes, configuration files, documentation, tests, translations, language catalogues, artwork, or any other materials submitted by You to the Project Owner for inclusion in, or documentation of, the Project, in any form or via any channel.
-- **"Project Owner"** means **Marco Lombardo**, the sole copyright holder and maintainer of Rebranding Tool.
-- **"Project"** means the Rebranding Tool software and all associated documentation hosted at the official GitHub repository.
+- **"Project Owner"** means **Marco Lombardo**, the sole copyright holder and maintainer of Proteus.
+- **"Project"** means the Proteus software and all associated documentation hosted at the official GitHub repository.
 - **"Submit"** means any act of uploading, sending, transmitting, or otherwise making available to the Project Owner a Contribution, including electronic mail lists, source code control systems, and issue tracking systems managed by or on behalf of the Project Owner.
 
 ---

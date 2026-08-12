@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Rebranding Tool - application logic (no tkinter dependency).
+Proteus - application logic (no tkinter dependency).
 
 Everything that is not user interface lives here: scanning, matching, atomic
 replacement, backup/restore, CSV export, settings persistence and logging.
@@ -45,9 +45,23 @@ except ImportError:  # pragma: no cover - environment dependent
 # Application constants
 # ---------------------------------------------------------------------------
 
-APP_NAME = "Rebranding Tool"
-APP_VERSION = "1.2"
-APP_SLUG = "RebrandingTool"
+APP_NAME = "Proteus"
+#: Shown next to the name: Proteus is the product, this says what it does.
+APP_TAGLINE = "Rebranding Tool"
+APP_VERSION = "1.3"
+APP_SLUG = "Proteus"
+
+APP_AUTHOR = "Marco Lombardo"
+APP_COPYRIGHT_YEAR = "2026"
+
+#: Legal notice shown in the application footer. Kept in English in every
+#: language: it is a licence notice, not interface copy. Displaying it also
+#: satisfies the "Appropriate Legal Notices" requirement of AGPL-3.0 section 5.
+LICENSE_NOTICE = (
+    f"© {APP_COPYRIGHT_YEAR} {APP_AUTHOR} — {APP_NAME}"
+    "  |  Licensed under AGPL-3.0"
+    "  |  Commercial licensing available"
+)
 
 #: File types treated as images when collected from the source folder.
 SUPPORTED_FORMATS = frozenset({
@@ -158,7 +172,7 @@ def writable_app_dir(subfolder: str) -> str:
 # Logging
 # ---------------------------------------------------------------------------
 
-def setup_logging(logger_name: str = "rebranding_tool") -> logging.Logger:
+def setup_logging(logger_name: str = "proteus") -> logging.Logger:
     """
     Configure the application logger with rotation (5 files of 2 MB).
     Idempotent: repeated calls do not duplicate handlers.
@@ -170,7 +184,7 @@ def setup_logging(logger_name: str = "rebranding_tool") -> logging.Logger:
 
     try:
         log_dir = writable_app_dir("logs")
-        fname = f"rebranding_{datetime.datetime.now():%Y%m%d}.log"
+        fname = f"proteus_{datetime.datetime.now():%Y%m%d}.log"
         handler = RotatingFileHandler(
             os.path.join(log_dir, fname),
             maxBytes=2 * 1024 * 1024,
@@ -734,7 +748,7 @@ def replace_file(
             backup_path = make_backup_path(target)
             shutil.copy2(target, backup_path)
 
-        fd, tmp_path = tempfile.mkstemp(prefix=".rebranding_", dir=folder)
+        fd, tmp_path = tempfile.mkstemp(prefix=".proteus_", dir=folder)
         os.close(fd)
         shutil.copy2(source, tmp_path)
         os.replace(tmp_path, target)   # atomic on the same filesystem

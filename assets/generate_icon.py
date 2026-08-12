@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Generate the application icon.
+Generate the Proteus application icon.
 
 The icon is committed as `app.ico`, but it is produced by this script so it can
 be regenerated or restyled without any binary editing. It is deliberately

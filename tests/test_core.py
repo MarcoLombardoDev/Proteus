@@ -412,7 +412,7 @@ def test_replace_file_leaves_target_intact_on_copy_failure(tmp_path, monkeypatch
     real_copy = core.shutil.copy2
 
     def failing_copy(src, dst, *args, **kwargs):
-        if os.path.basename(str(src)) == "logo.png" and ".rebranding_" in str(dst):
+        if os.path.basename(str(src)) == "logo.png" and ".proteus_" in str(dst):
             raise OSError("disco pieno")
         return real_copy(src, dst, *args, **kwargs)
 
@@ -422,7 +422,7 @@ def test_replace_file_leaves_target_intact_on_copy_failure(tmp_path, monkeypatch
     assert outcome.status == "error"
     assert open(target, "rb").read() == original
     leftovers = [f for f in os.listdir(os.path.dirname(target))
-                 if f.startswith(".rebranding_")]
+                 if f.startswith(".proteus_")]
     assert leftovers == []
 
 

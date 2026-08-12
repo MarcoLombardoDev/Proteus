@@ -1,11 +1,14 @@
-# 🖼️ Rebranding Tool
+# 🖼️ Proteus - Rebranding Tool
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-Available-green.svg)](#license--commercial-licensing)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-106-brightgreen.svg)](#development)
 
-Rebranding Tool is a Python desktop application for the **bulk replacement of logo and
+> **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
+> what your files look like without changing where they are.
+
+Proteus is a Python desktop application for the **bulk replacement of logo and
 graphic files** across a large folder tree — a company file server, a website checkout, a
 network share. You point it at a folder of new logos and a folder to scan; it finds the
 files that match a pattern, pairs each one with the most suitable replacement, shows you
@@ -69,7 +72,7 @@ across a website, an intranet, print templates and legacy folders — `logo_head
 means finding each one, guessing which new asset belongs where, and hoping you did not
 overwrite something with the wrong size.
 
-Rebranding Tool automates the finding and the pairing, but deliberately **keeps the human
+Proteus automates the finding and the pairing, but deliberately **keeps the human
 in the loop**: nothing is written until you have seen each proposed pairing, and every
 pairing carries a quality grade telling you where the automation is confident and where it
 is guessing.
@@ -106,6 +109,8 @@ is guessing.
 **Reporting**
 - CSV export of the proposed matches and of the replacement outcome
 - Rotating log files, with a fallback location when the application folder is read-only
+- A permanent licence notice in the window footer, satisfying the "Appropriate Legal
+  Notices" requirement of AGPL-3.0 section 5
 
 ---
 
@@ -339,7 +344,7 @@ display and reusable from a script.
 
 **Runtime data** is written next to the application, in `logs/` and `config/`. If that
 location is read-only — the typical `C:\Program Files` install — both fall back to
-`%LOCALAPPDATA%\RebrandingTool\` (or `~/.local/share/RebrandingTool/` elsewhere). Logs
+`%LOCALAPPDATA%\Proteus\` (or `~/.local/share/Proteus/` elsewhere). Logs
 rotate at 2 MB, keeping five files.
 
 ---
@@ -351,7 +356,7 @@ python build.py
 ```
 
 On Windows, `compile.bat` does the same. The result is a single-file
-`dist/RebrandingTool.exe` (~21 MB), with the icon embedded and a `logs/` folder prepared
+`dist/Proteus.exe` (~21 MB), with the icon embedded and a `logs/` folder prepared
 alongside it.
 
 The build script installs anything missing, picks the right `--add-data` separator for the
@@ -429,7 +434,7 @@ previews or read resolutions, and says so on the configuration tab.
 
 ## License & Commercial Licensing
 
-Rebranding Tool is open-source software released under the
+Proteus is open-source software released under the
 **[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)**.
 
 ### What AGPL-3.0 Means for You
@@ -445,13 +450,13 @@ Rebranding Tool is open-source software released under the
 
 ### Commercial Licensing
 
-If you need to use Rebranding Tool in a **proprietary application**, a **closed-source
+If you need to use Proteus in a **proprietary application**, a **closed-source
 service**, or an **enterprise deployment** without being bound by the AGPL-3.0 copyleft
 requirements, a **commercial license** is available.
 
 A commercial license grants you the right to:
 
-- embed Rebranding Tool in closed-source software,
+- embed Proteus in closed-source software,
 - run it as part of a service without disclosing your source code,
 - use it in commercial products without AGPL obligations.
 

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 echo ========================================
-echo   REBRANDING TOOL - RUN FROM SOURCE
+echo   PROTEUS - RUN FROM SOURCE
 echo ========================================
 echo.
 

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Rebranding Tool - translation layer.
+Proteus - translation layer.
 
 English is the source language: the keys of the catalogue *are* the English
 strings, so untranslated text degrades gracefully to readable English instead

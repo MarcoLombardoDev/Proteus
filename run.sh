@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run Rebranding Tool on Linux/macOS (handy for development and testing).
+# Run Proteus on Linux/macOS (handy for development and testing).
 set -euo pipefail
 
 cd "$(dirname "$0")"
