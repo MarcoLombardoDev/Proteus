@@ -1,7 +1,7 @@
-# Dipendenze per lo sviluppo e i test.
-# Installa prima quelle di runtime:  pip install -r requirements.txt
+# Development and test dependencies.
+# Install the runtime ones first:  pip install -r requirements.txt
 -r requirements.txt
 
 pytest>=7.4
-# Evita che un test GUI che apre una finestra modale blocchi la suite.
+# Prevents a GUI test that opens a modal dialog from hanging the suite.
 pytest-timeout>=2.1

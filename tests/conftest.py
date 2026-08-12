@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Configurazione comune dei test."""
+"""Shared test configuration."""
 
 from __future__ import annotations
 
@@ -14,18 +14,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 @pytest.fixture(autouse=True)
+def reset_language():
+    """
+    Start every test from the default language.
+
+    The active language is module-level state: without this, a test that
+    switches to Italian would leak into the ones that follow.
+    """
+    import i18n
+
+    previous = i18n.get_language()
+    i18n.set_language(i18n.DEFAULT_LANGUAGE)
+    yield
+    i18n.set_language(previous)
+
+
+@pytest.fixture(autouse=True)
 def no_modal_dialogs(monkeypatch):
     """
-    Neutralizza tutte le finestre modali.
+    Neutralise every modal dialog.
 
-    Senza questa protezione un test che percorre un ramo con `askyesno` o
-    `asksaveasfilename` apre una finestra reale e la suite resta appesa a
-    tempo indefinito invece di fallire.
+    Without this guard, a test walking a branch with `askyesno` or
+    `asksaveasfilename` opens a real window and the suite hangs indefinitely
+    instead of failing.
     """
     try:
         from tkinter import filedialog, messagebox
     except ImportError:
-        return  # tkinter assente: i test GUI vengono comunque saltati
+        return  # no tkinter: the GUI tests are skipped anyway
 
     for name in ("showinfo", "showwarning", "showerror"):
         monkeypatch.setattr(messagebox, name, lambda *a, **k: "ok", raising=False)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Test della logica applicativa (core.py), senza dipendenze GUI."""
+"""Tests for the application logic (core.py), with no GUI dependency."""
 
 from __future__ import annotations
 
@@ -15,12 +15,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import core  # noqa: E402
 
-PIL = pytest.importorskip("PIL", reason="Pillow necessario per generare immagini di test")
+PIL = pytest.importorskip("PIL", reason="Pillow is needed to build test images")
 from PIL import Image  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# Helper
+# Helpers
 # ---------------------------------------------------------------------------
 
 def make_image(path, size=(100, 50), fmt=None, color=(255, 0, 0)):
@@ -89,7 +89,7 @@ def test_matches_patterns_is_case_insensitive():
 
 
 # ---------------------------------------------------------------------------
-# Estensioni equivalenti
+# Equivalent extensions
 # ---------------------------------------------------------------------------
 
 def test_normalized_ext_groups_jpeg_and_tiff():
@@ -100,7 +100,7 @@ def test_normalized_ext_groups_jpeg_and_tiff():
 
 
 # ---------------------------------------------------------------------------
-# Dimensioni immagini
+# Image dimensions
 # ---------------------------------------------------------------------------
 
 def test_get_image_dimensions_png(tmp_path):
@@ -147,7 +147,7 @@ def test_get_image_dimensions_pdf_returns_none(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Scansione
+# Scanning
 # ---------------------------------------------------------------------------
 
 def test_scan_files_recursive_and_sorted(tmp_path):
@@ -175,7 +175,7 @@ def test_scan_files_skips_backups(tmp_path):
 
 
 def test_scan_files_excludes_source_folder(tmp_path):
-    """La cartella sorgente annidata non deve finire tra i target."""
+    """A nested source folder must not end up among the targets."""
     scan = tmp_path / "share"
     source = scan / "nuovi_loghi"
     make_image(scan / "sito" / "logo.png")
@@ -209,7 +209,7 @@ def test_is_within(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Abbinamento
+# Matching
 # ---------------------------------------------------------------------------
 
 def test_find_best_match_prefers_same_resolution(tmp_path):
@@ -219,8 +219,8 @@ def test_find_best_match_prefers_same_resolution(tmp_path):
 
     best, score = core.find_best_match(target, [far, close])
     assert best.path == close.path
-    # Risoluzione identica: ottima corrispondenza anche se il nome differisce.
-    assert core.Match(target=target, source=best, score=score).quality == "Ottima"
+    # Identical resolution: an excellent match even if the name differs.
+    assert core.Match(target=target, source=best, score=score).quality == core.QUALITY_EXCELLENT
 
 
 def test_find_best_match_requires_same_format(tmp_path):
@@ -240,7 +240,7 @@ def test_find_best_match_treats_jpg_and_jpeg_as_equivalent(tmp_path):
 
 
 def test_find_best_match_uses_name_as_tiebreak(tmp_path):
-    """A parità di risoluzione vince il nome file più simile."""
+    """With equal resolutions, the most similar file name wins."""
     target = core.FileInfo.from_path(
         make_image(tmp_path / "t" / "logo_header.png", (100, 100)))
     unrelated = core.FileInfo.from_path(
@@ -253,7 +253,7 @@ def test_find_best_match_uses_name_as_tiebreak(tmp_path):
 
 
 def test_find_best_match_is_deterministic(tmp_path):
-    """Candidati equivalenti devono produrre sempre lo stesso risultato."""
+    """Equivalent candidates must always yield the same result."""
     target = core.FileInfo.from_path(make_image(tmp_path / "t" / "logo.png", (100, 100)))
     sources = [
         core.FileInfo.from_path(make_image(tmp_path / "s" / f"x{i}.png", (100, 100)))
@@ -277,25 +277,25 @@ def test_build_matches_reports_progress(tmp_path):
 
 
 def test_match_quality_reflects_resolution_gap(tmp_path):
-    """Il giudizio dipende dallo scarto di risoluzione, non dal nome file."""
+    """The grade depends on the resolution gap, not on the file name."""
     target = core.FileInfo.from_path(make_image(tmp_path / "t" / "logo.png", (100, 100)))
     identical = core.FileInfo.from_path(make_image(tmp_path / "s" / "zzz.png", (100, 100)))
     close = core.FileInfo.from_path(make_image(tmp_path / "s" / "b.png", (120, 125)))
     far = core.FileInfo.from_path(make_image(tmp_path / "s" / "c.png", (900, 700)))
 
-    assert core.Match(target=target, source=identical).quality == "Ottima"
-    assert core.Match(target=target, source=close).quality == "Buona"
-    assert core.Match(target=target, source=far).quality == "Debole"
-    assert core.Match(target=target, source=None).quality == "—"
-    assert core.Match(target=target, source=far, manual=True).quality == "Manuale"
+    assert core.Match(target=target, source=identical).quality == core.QUALITY_EXCELLENT
+    assert core.Match(target=target, source=close).quality == core.QUALITY_GOOD_LABEL
+    assert core.Match(target=target, source=far).quality == core.QUALITY_WEAK
+    assert core.Match(target=target, source=None).quality == core.QUALITY_NONE
+    assert core.Match(target=target, source=far, manual=True).quality == core.QUALITY_MANUAL
 
 
 def test_match_quality_falls_back_to_name_without_dimensions(tmp_path):
-    """Su formati di cui non si legge la risoluzione (PDF/EPS) decide il nome."""
-    pdf_target = tmp_path / "t" / "logo_sace.pdf"
+    """For formats whose resolution cannot be read (PDF/EPS), the name decides."""
+    pdf_target = tmp_path / "t" / "logo_brand.pdf"
     pdf_target.parent.mkdir(parents=True)
     pdf_target.write_bytes(b"%PDF-1.4")
-    same_name = tmp_path / "s" / "logo_sace.pdf"
+    same_name = tmp_path / "s" / "logo_brand.pdf"
     same_name.parent.mkdir(parents=True)
     same_name.write_bytes(b"%PDF-1.4")
     other_name = tmp_path / "s" / "documento_generico.pdf"
@@ -305,13 +305,13 @@ def test_match_quality_falls_back_to_name_without_dimensions(tmp_path):
     assert target.dim is None
 
     assert core.Match(target=target,
-                      source=core.FileInfo.from_path(str(same_name))).quality == "Buona"
+                      source=core.FileInfo.from_path(str(same_name))).quality == core.QUALITY_GOOD_LABEL
     assert core.Match(target=target,
-                      source=core.FileInfo.from_path(str(other_name))).quality == "Debole"
+                      source=core.FileInfo.from_path(str(other_name))).quality == core.QUALITY_WEAK
 
 
 def test_dimension_distance_is_relative_to_target_size():
-    """20 px di scarto pesano su un'icona ma non su un banner."""
+    """A 20 px gap matters on an icon but not on a banner."""
     icon = core.dimension_distance((32, 32), (52, 32))
     banner = core.dimension_distance((1920, 1080), (1940, 1080))
     assert icon > banner
@@ -336,7 +336,7 @@ def test_dimension_cache_reads_each_file_once(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Sostituzione
+# Replacement
 # ---------------------------------------------------------------------------
 
 def test_replace_file_copies_content(tmp_path):
@@ -359,7 +359,7 @@ def test_replace_file_creates_backup(tmp_path):
 
 
 def test_second_run_does_not_overwrite_existing_backup(tmp_path):
-    """Il .bak della prima campagna deve sopravvivere alla seconda."""
+    """The first campaign's .bak must survive the second one."""
     target = make_image(tmp_path / "t" / "logo.png", (10, 10))
     first_source = make_image(tmp_path / "s" / "v1.png", (20, 20))
     second_source = make_image(tmp_path / "s" / "v2.png", (30, 30))
@@ -368,7 +368,7 @@ def test_second_run_does_not_overwrite_existing_backup(tmp_path):
     second = core.replace_file(target, second_source, backup=True)
 
     assert first.backup != second.backup
-    assert core.get_image_dimensions(first.backup) == (10, 10)   # originale intatto
+    assert core.get_image_dimensions(first.backup) == (10, 10)   # original intact
     assert core.get_image_dimensions(second.backup) == (20, 20)
     assert core.get_image_dimensions(target) == (30, 30)
 
@@ -384,7 +384,7 @@ def test_replace_file_missing_source(tmp_path):
     target = make_image(tmp_path / "t" / "logo.png")
     outcome = core.replace_file(target, str(tmp_path / "nope.png"))
     assert outcome.status == "error"
-    assert "sorgente" in outcome.message.lower()
+    assert "source" in outcome.message.lower()
 
 
 def test_replace_file_missing_target(tmp_path):
@@ -404,7 +404,7 @@ def test_replace_file_dry_run_changes_nothing(tmp_path):
 
 
 def test_replace_file_leaves_target_intact_on_copy_failure(tmp_path, monkeypatch):
-    """Una copia fallita a metà non deve troncare il file originale."""
+    """A copy that fails halfway must not truncate the original file."""
     target = make_image(tmp_path / "t" / "logo.png", (10, 10))
     source = make_image(tmp_path / "s" / "logo.png", (20, 20))
     original = open(target, "rb").read()
@@ -449,7 +449,7 @@ def test_replace_all_skips_matches_without_source(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Backup e ripristino
+# Backup and restore
 # ---------------------------------------------------------------------------
 
 def test_backup_origin_plain_and_timestamped():
@@ -473,7 +473,7 @@ def test_find_backups_and_restore(tmp_path):
 
 
 def test_restore_uses_oldest_backup(tmp_path):
-    """Con due campagne di rebranding si torna al file originale, non all'intermedio."""
+    """After two rebranding campaigns we return to the original, not the interim one."""
     target = make_image(tmp_path / "t" / "logo.png", (10, 10))
     core.replace_file(target, make_image(tmp_path / "s" / "v1.png", (20, 20)), backup=True)
     core.replace_file(target, make_image(tmp_path / "s" / "v2.png", (30, 30)), backup=True)
@@ -504,40 +504,40 @@ def test_export_matches_csv(tmp_path):
     core.export_matches_csv(matches, destination)
 
     content = open(destination, encoding="utf-8-sig").read()
-    assert "File da sostituire" in content
-    assert "SI" in content and "NO" in content
+    assert "File to Replace" in content
+    assert "YES" in content and "NO" in content
     assert content.count("\n") >= 3
 
 
 def test_export_report_csv(tmp_path):
     report = core.ReplaceReport(outcomes=[
         core.ReplaceOutcome("/a/logo.png", "/s/new.png", "ok", "", "/a/logo.png.bak"),
-        core.ReplaceOutcome("/a/b.png", "/s/x.png", "error", "permesso negato"),
+        core.ReplaceOutcome("/a/b.png", "/s/x.png", "error", "permission denied"),
     ])
     destination = str(tmp_path / "report.csv")
     core.export_report_csv(report, destination)
     content = open(destination, encoding="utf-8-sig").read()
-    assert "OK" in content and "ERROR" in content and "permesso negato" in content
+    assert "OK" in content and "ERROR" in content and "permission denied" in content
 
 
 # ---------------------------------------------------------------------------
-# Impostazioni
+# Settings
 # ---------------------------------------------------------------------------
 
 def test_settings_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "writable_app_dir", lambda sub: str(tmp_path))
     assert core.save_settings({"search_pattern": "banner*.jpg", "backup": False,
-                               "ignorato": "x"})
+                               "ignored": "x"})
     loaded = core.load_settings()
     assert loaded["search_pattern"] == "banner*.jpg"
     assert loaded["backup"] is False
-    assert "ignorato" not in loaded
-    assert loaded["source_folder"] == ""      # default preservato
+    assert "ignored" not in loaded
+    assert loaded["source_folder"] == ""      # default preserved
 
 
 def test_load_settings_survives_corrupted_file(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "writable_app_dir", lambda sub: str(tmp_path))
-    (tmp_path / core.SETTINGS_FILE).write_text("{ non json")
+    (tmp_path / core.SETTINGS_FILE).write_text("{ not json")
     assert core.load_settings() == core.DEFAULT_SETTINGS
 
 
@@ -550,7 +550,7 @@ def test_writable_app_dir_falls_back(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Validazione configurazione
+# Configuration validation
 # ---------------------------------------------------------------------------
 
 def test_validate_config_all_problems(tmp_path):
@@ -567,28 +567,28 @@ def test_validate_config_ok(tmp_path):
 
 def test_validate_config_rejects_identical_folders(tmp_path):
     problems = core.validate_config(str(tmp_path), str(tmp_path), "logo*.png")
-    assert any("coincidono" in p for p in problems)
+    assert any("same" in p for p in problems)
 
 
 def test_config_warnings_for_nested_source(tmp_path):
     source = tmp_path / "scan" / "nuovi"
     source.mkdir(parents=True)
     warnings = core.config_warnings(str(source), str(tmp_path / "scan"))
-    assert warnings and "esclusa" in warnings[0]
+    assert warnings and "excluded" in warnings[0]
 
 
 # ---------------------------------------------------------------------------
-# Scenario end-to-end
+# End-to-end scenario
 # ---------------------------------------------------------------------------
 
 def test_end_to_end_rebranding_campaign(tmp_path):
-    """Scansione → abbinamento → sostituzione → ripristino."""
+    """Scan -> match -> replace -> restore."""
     scan = tmp_path / "share"
     source = tmp_path / "nuovi_loghi"
 
     make_image(scan / "sito" / "logo_header.png", (200, 60))
     make_image(scan / "intranet" / "logo_footer.png", (100, 30))
-    make_image(scan / "docs" / "immagine.png", (50, 50))       # fuori pattern
+    make_image(scan / "docs" / "immagine.png", (50, 50))       # outside the pattern
     make_image(source / "logo_header.png", (200, 60), color=(0, 0, 255))
     make_image(source / "logo_footer.png", (100, 30), color=(0, 0, 255))
 
@@ -599,7 +599,8 @@ def test_end_to_end_rebranding_campaign(tmp_path):
     assert len(targets) == 2
 
     matches = core.build_matches(targets, sources)
-    assert all(m.source is not None and m.quality == "Ottima" for m in matches)
+    assert all(m.source is not None and m.quality == core.QUALITY_EXCELLENT
+               for m in matches)
 
     report = core.replace_all(matches, backup=True)
     assert report.ok == 2 and report.errors == 0

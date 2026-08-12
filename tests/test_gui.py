@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-Test dell'interfaccia grafica.
+Tests for the graphical interface.
 
-Girano headless (Xvfb su Linux, nativamente su Windows) e vengono saltati
-automaticamente dove non esiste un display.
+They run headless (Xvfb on Linux, natively on Windows) and are skipped
+automatically where no display is available.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-tk = pytest.importorskip("tkinter", reason="tkinter non disponibile")
-pytest.importorskip("PIL", reason="Pillow necessario per le anteprime")
+tk = pytest.importorskip("tkinter", reason="tkinter is unavailable")
+pytest.importorskip("PIL", reason="Pillow is needed for the previews")
 
 from PIL import Image  # noqa: E402
 
@@ -33,13 +33,13 @@ def _display_available() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    not _display_available(), reason="Nessun display disponibile (usa xvfb-run)"
+    not _display_available(), reason="No display available (use xvfb-run)"
 )
 
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
-    """Istanza dell'applicazione isolata dalle impostazioni dell'utente reale."""
+    """Application instance isolated from the real user's settings."""
     monkeypatch.setattr(core, "writable_app_dir", lambda sub: str(tmp_path / sub))
     os.makedirs(tmp_path / "config", exist_ok=True)
     os.makedirs(tmp_path / "logs", exist_ok=True)
@@ -52,8 +52,8 @@ def app(tmp_path, monkeypatch):
     root.update()
     yield instance
 
-    # Chiusura come quella reale: annulla il tick della coda UI, altrimenti
-    # l'after() pendente si ripresenta durante il test successivo.
+    # Shut down like the real thing: cancel the UI queue tick, otherwise the
+    # pending after() resurfaces during the next test.
     instance._worker = None
     try:
         instance._on_close()
@@ -70,16 +70,16 @@ def make_image(path, size=(100, 50), color=(255, 0, 0), fmt=None):
 
 
 # ---------------------------------------------------------------------------
-# Avvio
+# Startup
 # ---------------------------------------------------------------------------
 
 def test_app_starts_with_all_tabs(app):
-    """Regressione: con ttkbootstrap 2.x l'avvio falliva con TclError."""
+    """Regression: with ttkbootstrap 2.x startup failed with a TclError."""
     assert len(app.notebook.tabs()) == 4
 
 
 def test_progressbar_widget_exists_and_is_bound(app):
-    """La progressbar esisteva solo come variabile, senza widget associato."""
+    """The progressbar existed only as a variable, with no widget bound to it."""
     assert app._progress is not None
     assert str(app._progress.cget("variable")) == str(app.progress_var)
     app.progress_var.set(42)
@@ -88,19 +88,19 @@ def test_progressbar_widget_exists_and_is_bound(app):
 
 def test_progressbar_is_actually_visible(app):
     """
-    Regressione: con i colori di default la barra veniva disegnata bianca su
-    fondo bianco, quindi l'avanzamento era invisibile pur essendo corretto.
+    Regression: with the default colours the bar was drawn white on a white
+    trough, so progress was invisible even though it was correct.
     """
-    style = app.style.configure("Sace.Horizontal.TProgressbar") or {}
-    from rebranding_tool import PROGRESS_STYLE, SACE_BLUE
+    style = app.style.configure("Brand.Horizontal.TProgressbar") or {}
+    from rebranding_tool import BRAND_BLUE, PROGRESS_STYLE
 
     assert str(app._progress.cget("style")) == PROGRESS_STYLE
-    assert style.get("background") == SACE_BLUE
+    assert style.get("background") == BRAND_BLUE
     assert style.get("troughcolor") != style.get("background")
 
 
 def test_button_styles_do_not_use_bootstyle(app):
-    """I pulsanti devono usare stili ttk nostri, non l'opzione bootstyle."""
+    """Buttons must use our own ttk styles, not the bootstyle option."""
     for kind in ("primary", "success", "warning", "danger", "outline"):
         options = app.btn(kind)
         assert "bootstyle" not in options
@@ -108,31 +108,44 @@ def test_button_styles_do_not_use_bootstyle(app):
 
 
 def test_all_registered_button_styles_are_usable(app):
-    """Ogni stile dichiarato deve essere applicabile a un ttk.Button reale."""
+    """Every declared style must apply to a real ttk.Button."""
     from tkinter import ttk
 
-    for kind in ("primary", "success", "warning", "danger", "outline", "sconosciuto"):
+    for kind in ("primary", "success", "warning", "danger", "outline", "unknown"):
         widget = ttk.Button(app.root, text="x", **app.btn(kind))
         widget.destroy()
 
 
 # ---------------------------------------------------------------------------
-# Flusso completo
+# Full flow
 # ---------------------------------------------------------------------------
 
 def _run_workers(app, timeout=15.0):
-    """Attende la fine del worker svuotando la coda UI, come farebbe il mainloop."""
+    """Wait for the worker to finish, draining the UI queue as the mainloop would."""
     import time
 
     deadline = time.time() + timeout
     while app._busy() and time.time() < deadline:
         app.root.update()
         time.sleep(0.01)
-    # Ultimi giri per applicare gli aggiornamenti accodati dal worker.
+    # A few final rounds to apply the updates queued by the worker.
     for _ in range(5):
         app.root.update()
         time.sleep(0.02)
-    assert not app._busy(), "Il worker non è terminato entro il timeout"
+    assert not app._busy(), "The worker did not finish within the timeout"
+
+
+def _drain_ui(app, seconds=0.5):
+    """
+    Let the UI queue drain. Entries are applied by an after(80ms) tick, so a
+    single root.update() is not enough to see them.
+    """
+    import time
+
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        app.root.update()
+        time.sleep(0.02)
 
 
 def test_scan_match_and_replace_flow(app, tmp_path, monkeypatch):
@@ -199,7 +212,7 @@ def test_dry_run_leaves_files_untouched(app, tmp_path, monkeypatch):
 
 
 def test_nested_source_folder_is_not_a_target(app, tmp_path, monkeypatch):
-    """I nuovi loghi dentro la cartella scansionata non vanno sostituiti."""
+    """New logos inside the scanned folder must not be replaced."""
     scan = tmp_path / "share"
     source = scan / "nuovi_loghi"
     make_image(scan / "sito" / "logo.png", (200, 60), (255, 0, 0))
@@ -219,11 +232,11 @@ def test_nested_source_folder_is_not_a_target(app, tmp_path, monkeypatch):
 
 def test_thumbnails_are_never_finalized_off_the_main_thread(app, tmp_path, monkeypatch):
     """
-    Regressione del blocco dell'interfaccia.
+    Regression for the interface freeze.
 
-    Il distruttore di ImageTk.PhotoImage chiama Tk. Se il garbage collector
-    ciclico lo eseguiva mentre girava su un thread di lavoro, la chiamata a
-    Tk fuori dal thread principale piantava l'applicazione a metà scansione.
+    ImageTk.PhotoImage's destructor calls into Tk. When the cyclic garbage
+    collector ran it while executing on a worker thread, that call into Tk from
+    outside the main thread hung the application halfway through a scan.
     """
     import gc
 
@@ -240,12 +253,12 @@ def test_thumbnails_are_never_finalized_off_the_main_thread(app, tmp_path, monke
     app._start_scan()
     _run_workers(app)
 
-    # Genera miniature (e quindi potenziale spazzatura ciclica Tk) come
-    # farebbe un utente che sfoglia le anteprime prima di lanciare l'analisi.
+    # Create thumbnails (hence potential cyclic Tk garbage) the way a user
+    # browsing previews before starting the analysis would.
     for row in app._scan_tree.get_children():
         app._scan_tree.selection_set(row)
         app.root.update()
-    assert app._image_refs, "le miniature devono essere trattenute dall'app"
+    assert app._image_refs, "thumbnails must be retained by the app"
 
     collected_on = []
     real_collect = gc.collect
@@ -257,17 +270,17 @@ def test_thumbnails_are_never_finalized_off_the_main_thread(app, tmp_path, monke
     monkeypatch.setattr(gc, "collect", tracking_collect)
 
     app._start_matching()
-    assert not gc.isenabled(), "il collector va sospeso mentre il worker lavora"
+    assert not gc.isenabled(), "the collector must be paused while the worker runs"
     _run_workers(app)
 
-    assert gc.isenabled(), "il collector va riattivato a fine operazione"
-    assert collected_on, "la spazzatura va raccolta esplicitamente"
+    assert gc.isenabled(), "the collector must be resumed when the operation ends"
+    assert collected_on, "garbage must be collected explicitly"
     assert set(collected_on) == {"MainThread"}
     assert len(app.matches) == 4
 
 
 def test_clear_previews_releases_image_references(app, tmp_path, monkeypatch):
-    """Su Windows una miniatura ancora aperta impedisce di sovrascrivere il file."""
+    """On Windows a thumbnail still open prevents overwriting the file."""
     scan = tmp_path / "share"
     make_image(scan / "logo.png")
     app.source_folder.set(str(tmp_path / "nuovi"))
@@ -287,7 +300,7 @@ def test_clear_previews_releases_image_references(app, tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Interazione con la tabella corrispondenze
+# Match table interaction
 # ---------------------------------------------------------------------------
 
 def _prepare_matches(app, tmp_path, monkeypatch, count=3):
@@ -311,8 +324,8 @@ def _prepare_matches(app, tmp_path, monkeypatch, count=3):
 
 def test_toggle_only_affects_the_checkbox_column(app, tmp_path, monkeypatch):
     """
-    Regressione: qualunque clic invertiva la riga, rendendo impossibile
-    selezionarla per vederne l'anteprima.
+    Regression: any click inverted the row, making it impossible to select one
+    just to look at its preview.
     """
     matches = _prepare_matches(app, tmp_path, monkeypatch, count=1)
     row_id = matches[0].target.path
@@ -326,7 +339,7 @@ def test_toggle_only_affects_the_checkbox_column(app, tmp_path, monkeypatch):
 
     monkeypatch.setattr(app._match_tree, "identify_column", lambda x: "#3")
     app._on_match_click(Event())
-    assert matches[0].enabled, "un clic fuori dalla colonna ✓ non deve invertire la riga"
+    assert matches[0].enabled, "a click outside the ✓ column must not invert the row"
 
     monkeypatch.setattr(app._match_tree, "identify_column", lambda x: "#2")
     app._on_match_click(Event())
@@ -346,7 +359,7 @@ def test_select_and_deselect_all(app, tmp_path, monkeypatch):
 
 
 def test_sorting_is_numeric_and_toggles(app, tmp_path, monkeypatch):
-    """Ordinando come testo «10» finiva prima di «2»."""
+    """Sorted as text, «10» came before «2»."""
     _prepare_matches(app, tmp_path, monkeypatch, count=12)
     tree = app._match_tree
 
@@ -360,15 +373,15 @@ def test_sorting_is_numeric_and_toggles(app, tmp_path, monkeypatch):
 
 
 def test_size_column_sorts_by_real_magnitude(app):
-    """«2.0 MB» deve valere più di «900.0 KB», che come testo perderebbe."""
+    """«2.0 MB» must outrank «900.0 KB», which would lose as plain text."""
     assert app._numeric_prefix("2.0 MB") > app._numeric_prefix("900.0 KB")
     assert app._numeric_prefix("1.0 GB") > app._numeric_prefix("999.0 MB")
     assert app._numeric_prefix("800×600 px") > app._numeric_prefix("100×100 px")
-    assert app._numeric_prefix("N/D") == -1.0
+    assert app._numeric_prefix("N/A") == -1.0
 
 
 def _find_widget(parent, cls, text=None):
-    """Cerca ricorsivamente il primo widget del tipo (ed eventuale testo) dato."""
+    """Recursively find the first widget of the given type (and optional text)."""
     for child in parent.winfo_children():
         if isinstance(child, cls):
             if text is None or str(child.cget("text")) == text:
@@ -380,7 +393,7 @@ def _find_widget(parent, cls, text=None):
 
 
 def test_manual_source_override_through_dialog(app, tmp_path, monkeypatch):
-    """Doppio clic su una riga permette di scegliere un sorgente diverso."""
+    """Double-clicking a row allows choosing a different source."""
     from tkinter import ttk
 
     matches = _prepare_matches(app, tmp_path, monkeypatch, count=3)
@@ -394,16 +407,16 @@ def test_manual_source_override_through_dialog(app, tmp_path, monkeypatch):
     listbox = _find_widget(dialog, tk.Listbox)
     assert listbox is not None and listbox.size() == len(app.source_files)
 
-    # La prima voce è il candidato migliore: ne scegliamo un altro.
+    # The first entry is the best candidate: pick a different one.
     listbox.selection_clear(0, tk.END)
     listbox.selection_set(1)
-    _find_widget(dialog, ttk.Button, "Conferma").invoke()
+    _find_widget(dialog, ttk.Button, "Confirm").invoke()
     app.root.update()
 
     assert match.manual is True
     assert match.enabled is True
     assert match.source.path != original_source
-    assert app._match_tree.set(match.target.path, "quality") == "Manuale"
+    assert app._match_tree.set(match.target.path, "quality") == "Manual"
     assert app._match_tree.set(match.target.path, "src_name") == match.source.name
 
 
@@ -416,7 +429,7 @@ def test_choose_source_dialog_cancel_leaves_match_untouched(app, tmp_path, monke
 
     dialog = app._choose_source_dialog(match.target.path)
     app.root.update()
-    _find_widget(dialog, ttk.Button, "Annulla").invoke()
+    _find_widget(dialog, ttk.Button, "Cancel").invoke()
     app.root.update()
 
     assert match.source.path == original
@@ -424,7 +437,7 @@ def test_choose_source_dialog_cancel_leaves_match_untouched(app, tmp_path, monke
 
 
 # ---------------------------------------------------------------------------
-# Ripristino
+# Restore
 # ---------------------------------------------------------------------------
 
 def test_restore_backups_undoes_a_campaign(app, tmp_path, monkeypatch):
@@ -462,12 +475,12 @@ def test_restore_without_backups_reports_nothing_to_do(app, tmp_path, monkeypatc
     monkeypatch.setattr("tkinter.messagebox.showinfo",
                         lambda title, msg, *a, **k: seen.update(title=title))
     app._restore_backups()
-    assert seen.get("title") == "Nessun backup"
+    assert seen.get("title") == "No backup"
     assert not app._busy()
 
 
 # ---------------------------------------------------------------------------
-# Riepilogo e chiusura
+# Summary and shutdown
 # ---------------------------------------------------------------------------
 
 def test_replace_summary_warns_when_backup_is_off(app, tmp_path, monkeypatch):
@@ -480,25 +493,25 @@ def test_replace_summary_warns_when_backup_is_off(app, tmp_path, monkeypatch):
 
     app._backup_var.set(False)
     app._refresh_replace_summary()
-    assert "definitivamente" in app._replace_summary_lbl.cget("text").lower()
+    assert "permanently" in app._replace_summary_lbl.cget("text").lower()
 
     app._dry_run_var.set(True)
     app._refresh_replace_summary()
-    assert "SIMULAZIONE" in app._replace_summary_lbl.cget("text")
+    assert "DRY RUN" in app._replace_summary_lbl.cget("text")
 
 
 def test_summary_refreshes_when_switching_to_tab_four(app, tmp_path, monkeypatch):
-    """Arrivando al tab ④ dalla barra dei tab il riepilogo era stantio."""
+    """Reaching tab ④ from the tab strip left the summary stale."""
     _prepare_matches(app, tmp_path, monkeypatch, count=2)
     app.notebook.select(3)
     app.root.update()
-    assert "2 file" in app._replace_summary_lbl.cget("text")
+    assert "2 of 2" in app._replace_summary_lbl.cget("text")
 
     app._deselect_all_matches()
     app.notebook.select(0)
     app.notebook.select(3)
     app.root.update()
-    assert "Nessuna sostituzione" in app._replace_summary_lbl.cget("text")
+    assert "No replacement" in app._replace_summary_lbl.cget("text")
 
 
 def test_settings_are_persisted_on_close(app, tmp_path, monkeypatch):
@@ -511,9 +524,97 @@ def test_settings_are_persisted_on_close(app, tmp_path, monkeypatch):
     assert core.load_settings()["backup"] is False
 
 
+# ---------------------------------------------------------------------------
+# Language switching
+# ---------------------------------------------------------------------------
+
+def test_language_switch_retranslates_the_interface(app):
+    import i18n
+
+    assert app.notebook.tab(0, "text") == "  ① CONFIGURATION  "
+    assert app.status_label.cget("text") == "Ready"
+
+    app._change_language("it")
+
+    assert i18n.get_language() == "it"
+    assert app.notebook.tab(0, "text") == "  ① CONFIGURAZIONE  "
+    assert app._btn_scan.cget("text") == "🔍  AVVIA SCANSIONE"
+    assert app._scan_tree.heading("name")["text"] == "Nome File"
+    assert app._match_tree.heading("quality")["text"] == "Qualità"
+
+
+def test_language_switch_keeps_data_and_repopulates_tables(app, tmp_path, monkeypatch):
+    """Switching language rebuilds the widgets: the results must survive."""
+    matches = _prepare_matches(app, tmp_path, monkeypatch, count=3)
+    app._deselect_all_matches()
+    matches[0].enabled = True
+    app._refresh_match_row(matches[0])
+
+    app.notebook.select(2)
+    app.root.update()
+
+    app._change_language("it")
+    app.root.update()
+
+    assert len(app.scanned_files) == 3
+    assert len(app._scan_tree.get_children()) == 3
+    assert len(app._match_tree.get_children()) == 3
+    # The selection state is data, not presentation: it must not be lost.
+    assert len(app._enabled_matches()) == 1
+    assert app.notebook.index("current") == 2
+    assert app._match_tree.set(matches[0].target.path, "quality") == "Ottima"
+
+
+def test_language_switch_preserves_the_log(app):
+    app.log("a distinctive log line")
+    _drain_ui(app)
+    assert "a distinctive log line" in app.log_text.get("1.0", tk.END)
+
+    app._change_language("it")
+    _drain_ui(app)
+    assert "a distinctive log line" in app.log_text.get("1.0", tk.END)
+
+
+def test_language_settings_survive_a_restart(app, tmp_path, monkeypatch):
+    app._change_language("it")
+    assert core.load_settings()["language"] == "it"
+
+
+def test_language_switch_is_refused_while_busy(app, tmp_path, monkeypatch):
+    """
+    Rebuilding mid-operation would destroy the widgets the worker's queued
+    callbacks are about to touch.
+    """
+    import i18n
+
+    scan = tmp_path / "share"
+    source = tmp_path / "nuovi"
+    for i in range(3):
+        make_image(scan / f"logo_{i}.png")
+        make_image(source / f"logo_{i}.png")
+    app.source_folder.set(str(source))
+    app.scan_folder.set(str(scan))
+    app.search_pattern.set("logo*.png")
+
+    seen = {}
+    monkeypatch.setattr("tkinter.messagebox.showinfo",
+                        lambda title, msg, *a, **k: seen.update(title=title))
+
+    app._start_scan()
+    app._change_language("it")          # while the worker is running
+    assert i18n.get_language() == "en"
+    assert seen.get("title") == "Operation in progress"
+    # The combobox must snap back to the language actually in use.
+    assert app._language_var.get() == "English"
+
+    _run_workers(app)
+    app._change_language("it")          # now it is allowed
+    assert i18n.get_language() == "it"
+
+
 def test_closing_stops_the_ui_pump(app):
-    """Il ciclo after() continuava a girare dopo la distruzione della finestra."""
+    """The after() loop kept running after the window was destroyed."""
     app._on_close()
     assert app._closing is True
-    # Un pump successivo deve uscire subito senza sollevare TclError.
+    # A later pump must return immediately without raising TclError.
     app._pump_ui_queue()

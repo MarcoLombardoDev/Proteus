@@ -23,15 +23,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # Su Linux tkinter e' un pacchetto separato e serve un display virtuale
-      # per i test dell'interfaccia.
-      - name: Installa tkinter e Xvfb (Linux)
+      # On Linux tkinter is a separate package and the interface tests need a
+      # virtual display.
+      - name: Install tkinter and Xvfb (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-tk xvfb
 
-      - name: Installa dipendenze
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
@@ -44,10 +44,10 @@ jobs:
         if: runner.os == 'Windows'
         run: python -m pytest
 
-  # Verifica che l'eseguibile si compili davvero, cosi' una build rotta
-  # emerge in CI e non al momento della distribuzione.
+  # Verify the executable really builds, so a broken build surfaces in CI
+  # rather than at distribution time.
   build:
-    name: Build eseguibile
+    name: Build executable
     runs-on: windows-latest
     needs: test
     steps:
@@ -57,12 +57,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Installa dipendenze
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Compila
+      - name: Build
         run: python build.py
 
       - uses: actions/upload-artifact@v4

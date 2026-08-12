@@ -1,22 +1,21 @@
 @echo off
+setlocal
 echo ========================================
-echo   REBRANDING TOOL - COMPILAZIONE
+echo   REBRANDING TOOL - BUILD EXECUTABLE
 echo ========================================
 echo.
 
-REM Verifica che Python sia disponibile
 py --version >nul 2>&1
 if errorlevel 1 (
-    echo ERRORE: Python non trovato!
-    echo Installa Python 3.x e riprova.
+    echo ERROR: Python not found.
+    echo Install Python 3.10 or newer and try again.
     pause
     exit /b 1
 )
 
-REM Esegui lo script di build
-echo Avvio processo di compilazione...
-py build.py
+echo Starting the build...
+py "%~dp0build.py"
 
 echo.
-echo Premi un tasto per chiudere...
+echo Press any key to close...
 pause >nul

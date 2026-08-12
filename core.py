@@ -2,15 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-Rebranding Tool - Logica applicativa (nessuna dipendenza da tkinter).
+Rebranding Tool - application logic (no tkinter dependency).
 
-Questo modulo contiene tutto ciò che non è interfaccia grafica:
-scansione, abbinamento, sostituzione atomica, backup/ripristino,
-export CSV, persistenza impostazioni e logging.
+Everything that is not user interface lives here: scanning, matching, atomic
+replacement, backup/restore, CSV export, settings persistence and logging.
 
-Essendo privo di dipendenze GUI è interamente testabile da riga di comando.
-
-SACE S.p.A
+Having no GUI dependency makes this module fully testable headlessly.
 """
 
 from __future__ import annotations
@@ -33,31 +30,33 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
+import i18n
+from i18n import t
+
 try:
     from PIL import Image
     PIL_AVAILABLE = True
-except ImportError:  # pragma: no cover - dipende dall'ambiente
+except ImportError:  # pragma: no cover - environment dependent
     Image = None
     PIL_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
-# Costanti applicazione
+# Application constants
 # ---------------------------------------------------------------------------
 
 APP_NAME = "Rebranding Tool"
-APP_VERSION = "1.1"
-APP_COMPANY = "SACE S.p.A"
+APP_VERSION = "1.2"
 APP_SLUG = "RebrandingTool"
 
-#: Formati file considerati "immagine" nella cartella sorgente.
+#: File types treated as images when collected from the source folder.
 SUPPORTED_FORMATS = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif",
     ".svg", ".ico", ".webp", ".eps", ".pdf",
 })
 
-#: Estensioni intercambiabili tra loro in fase di abbinamento.
-#: Un `logo.jpg` può essere sostituito da un `logo_nuovo.jpeg` e viceversa.
+#: Extensions considered interchangeable while matching.
+#: A `logo.jpg` may be replaced by a `new_logo.jpeg` and vice versa.
 EQUIVALENT_EXTENSIONS: dict[str, str] = {
     ".jpg": ".jpeg",
     ".jpeg": ".jpeg",
@@ -65,55 +64,63 @@ EQUIVALENT_EXTENSIONS: dict[str, str] = {
     ".tiff": ".tiff",
 }
 
-#: Estensioni per cui Pillow non è in grado di ricavare le dimensioni.
-#: Per l'SVG le dimensioni vengono lette dal markup XML (vedi `svg_dimensions`).
+#: Extensions whose dimensions Pillow cannot read. SVG is handled separately
+#: by parsing the XML markup (see `svg_dimensions`).
 NO_PIL_PREVIEW = frozenset({".svg", ".eps", ".pdf"})
 
-#: Suffisso usato per i backup dei file originali.
+#: Suffix used for backups of the original files.
 BACKUP_SUFFIX = ".bak"
 
-#: Peso della differenza di risoluzione nel punteggio di abbinamento.
-#: Il criterio dimensionale resta dominante, il nome file fa da spareggio.
+#: Weight of the resolution gap in the ranking score. The dimensional
+#: criterion stays dominant; the file name only breaks ties.
 WEIGHT_DIMENSION = 0.65
 WEIGHT_NAME = 0.35
 
-#: Soglie sullo scarto *dimensionale* relativo per la classificazione
-#: qualitativa. Il nome file influenza la scelta del candidato ma non il
-#: giudizio: un logo con la risoluzione esatta è un'ottima corrispondenza
-#: anche se il file sorgente si chiama diversamente.
+#: Thresholds on the *relative* resolution gap used to grade a match. The file
+#: name influences which candidate wins but never the grade: a logo with the
+#: exact resolution is an excellent match even if the source file is named
+#: differently.
 QUALITY_GOOD = 0.10
 QUALITY_FAIR = 0.35
 
-#: Soglia di somiglianza del nome usata quando le risoluzioni non sono
-#: determinabili (PDF, EPS, file corrotti).
+#: Name-similarity threshold used when resolutions cannot be determined
+#: (PDF, EPS, corrupted files).
 NAME_ONLY_GOOD = 0.80
+
+#: Canonical match grades. These strings double as translation keys, so they
+#: stay stable across languages and can be asserted on in tests.
+QUALITY_EXCELLENT = "Excellent"
+QUALITY_GOOD_LABEL = "Good"
+QUALITY_WEAK = "Weak"
+QUALITY_MANUAL = "Manual"
+QUALITY_NONE = "—"
 
 
 class OperationCancelled(Exception):
-    """Sollevata quando l'utente annulla un'operazione lunga."""
+    """Raised when the user cancels a long-running operation."""
 
 
 # ---------------------------------------------------------------------------
-# Percorsi applicazione
+# Application paths
 # ---------------------------------------------------------------------------
 
 def get_base_path() -> str:
-    """Path base dell'applicazione (cartella dell'eseguibile o dello script)."""
+    """Base path of the application (executable or script folder)."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 
 def resource_path(relative: str) -> str:
-    """Percorso di una risorsa, valido sia da sorgente sia da bundle PyInstaller."""
+    """Path of a bundled resource, valid both from source and from PyInstaller."""
     base = getattr(sys, "_MEIPASS", get_base_path())
     return os.path.join(base, relative)
 
 
 def user_data_dir() -> str:
     """
-    Cartella dati utente scrivibile, usata come fallback quando la cartella
-    dell'applicazione è in sola lettura (tipico caso `C:\\Program Files`).
+    Writable per-user data folder, used as a fallback when the application
+    folder is read-only (the typical `C:\\Program Files` case).
     """
     if os.name == "nt":
         root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
@@ -125,7 +132,7 @@ def user_data_dir() -> str:
 
 
 def _is_writable_dir(path: str) -> bool:
-    """Verifica *effettiva* di scrivibilità (os.access mente su alcune share SMB)."""
+    """Real writability probe (os.access lies on some SMB shares)."""
     try:
         os.makedirs(path, exist_ok=True)
         with tempfile.NamedTemporaryFile(dir=path, prefix=".wtest_", delete=True):
@@ -136,8 +143,8 @@ def _is_writable_dir(path: str) -> bool:
 
 def writable_app_dir(subfolder: str) -> str:
     """
-    Restituisce `<base>/<subfolder>` se scrivibile, altrimenti la stessa
-    sottocartella dentro la cartella dati utente. Crea la cartella scelta.
+    Return `<base>/<subfolder>` when writable, otherwise the same subfolder
+    inside the user data directory. Creates the chosen folder.
     """
     preferred = os.path.join(get_base_path(), subfolder)
     if _is_writable_dir(preferred):
@@ -153,8 +160,8 @@ def writable_app_dir(subfolder: str) -> str:
 
 def setup_logging(logger_name: str = "rebranding_tool") -> logging.Logger:
     """
-    Configura il logger applicativo con rotazione (5 file da 2 MB).
-    Idempotente: chiamate successive non duplicano gli handler.
+    Configure the application logger with rotation (5 files of 2 MB).
+    Idempotent: repeated calls do not duplicate handlers.
     """
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
@@ -175,19 +182,19 @@ def setup_logging(logger_name: str = "rebranding_tool") -> logging.Logger:
                               datefmt="%Y-%m-%d %H:%M:%S")
         )
         logger.addHandler(handler)
-    except Exception as exc:  # pragma: no cover - dipende dai permessi
+    except Exception as exc:  # pragma: no cover - permission dependent
         logger.addHandler(logging.StreamHandler())
-        logger.warning("Logging su file non disponibile: %s", exc)
+        logger.warning("File logging unavailable: %s", exc)
 
     return logger
 
 
 # ---------------------------------------------------------------------------
-# Utility di formattazione e lettura immagini
+# Formatting and image reading helpers
 # ---------------------------------------------------------------------------
 
 def format_size(size_bytes: float) -> str:
-    """Formatta una dimensione in byte in stringa leggibile (es. `1.5 MB`)."""
+    """Format a byte count as a readable string (e.g. `1.5 MB`)."""
     value = float(size_bytes)
     for unit in ("B", "KB", "MB", "GB"):
         if abs(value) < 1024:
@@ -198,7 +205,7 @@ def format_size(size_bytes: float) -> str:
 
 _SVG_LEN_RE = re.compile(r"^\s*([0-9]*\.?[0-9]+)\s*([a-z%]*)\s*$", re.IGNORECASE)
 
-#: Fattori di conversione verso pixel CSS (96 dpi), come da specifica SVG.
+#: Conversion factors to CSS pixels (96 dpi), per the SVG specification.
 _SVG_UNITS = {
     "": 1.0, "px": 1.0, "pt": 96 / 72, "pc": 16.0,
     "mm": 96 / 25.4, "cm": 96 / 2.54, "in": 96.0,
@@ -206,26 +213,26 @@ _SVG_UNITS = {
 
 
 def _svg_length_to_px(raw: str | None) -> float | None:
-    """Converte una lunghezza SVG (`120`, `2.5cm`, `10pt`) in pixel."""
+    """Convert an SVG length (`120`, `2.5cm`, `10pt`) to pixels."""
     if not raw:
         return None
-    m = _SVG_LEN_RE.match(raw)
-    if not m:
+    match = _SVG_LEN_RE.match(raw)
+    if not match:
         return None
-    value, unit = float(m.group(1)), m.group(2).lower()
+    value, unit = float(match.group(1)), match.group(2).lower()
     factor = _SVG_UNITS.get(unit)
-    if factor is None:  # percentuali e unità relative non sono risolvibili
+    if factor is None:  # percentages and relative units are not resolvable
         return None
     return value * factor
 
 
 def svg_dimensions(filepath: str) -> tuple[int, int] | None:
     """
-    Ricava (larghezza, altezza) in pixel da un file SVG, usando gli attributi
-    `width`/`height` e, in mancanza, il `viewBox`. Ritorna None se illeggibile.
+    Derive (width, height) in pixels from an SVG file, using the `width` and
+    `height` attributes and falling back to `viewBox`. None if unreadable.
     """
     try:
-        # Gli SVG possono essere enormi: ci serve solo l'elemento radice.
+        # SVGs can be huge: only the root element is needed.
         for _event, elem in ET.iterparse(filepath, events=("start",)):
             width = _svg_length_to_px(elem.get("width"))
             height = _svg_length_to_px(elem.get("height"))
@@ -247,7 +254,7 @@ def svg_dimensions(filepath: str) -> tuple[int, int] | None:
 
 
 def get_image_dimensions(filepath: str) -> tuple[int, int] | None:
-    """Ritorna (width, height) del file, oppure None se non determinabile."""
+    """Return (width, height) for the file, or None if undeterminable."""
     ext = Path(filepath).suffix.lower()
     if ext == ".svg":
         return svg_dimensions(filepath)
@@ -261,7 +268,7 @@ def get_image_dimensions(filepath: str) -> tuple[int, int] | None:
 
 
 def size_diff(dim1: tuple[int, int] | None, dim2: tuple[int, int] | None) -> float:
-    """Distanza euclidea tra due risoluzioni. `inf` se una delle due è ignota."""
+    """Euclidean distance between two resolutions. `inf` if either is unknown."""
     if dim1 is None or dim2 is None:
         return float("inf")
     (w1, h1), (w2, h2) = dim1, dim2
@@ -270,8 +277,8 @@ def size_diff(dim1: tuple[int, int] | None, dim2: tuple[int, int] | None) -> flo
 
 def normalized_ext(path_or_ext: str) -> str:
     """
-    Estensione normalizzata usata per il confronto di formato.
-    `.jpg`/`.jpeg` e `.tif`/`.tiff` collassano sullo stesso valore.
+    Normalised extension used to compare formats.
+    `.jpg`/`.jpeg` and `.tif`/`.tiff` collapse onto the same value.
     """
     ext = path_or_ext if path_or_ext.startswith(".") else Path(path_or_ext).suffix
     ext = ext.lower()
@@ -279,22 +286,22 @@ def normalized_ext(path_or_ext: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Modello dati
+# Data model
 # ---------------------------------------------------------------------------
 
 @dataclass
 class FileInfo:
-    """Metadati di un file individuato dalla scansione."""
+    """Metadata of a file found by the scan."""
 
     path: str
     name: str
-    ext: str                    # estensione con punto, minuscola (".png")
+    ext: str                    # lowercase extension with dot (".png")
     size: int
     dim: tuple[int, int] | None
 
     @property
     def fmt(self) -> str:
-        """Formato in maiuscolo per la visualizzazione (`PNG`)."""
+        """Uppercase format for display (`PNG`)."""
         return self.ext.lstrip(".").upper()
 
     @property
@@ -303,7 +310,7 @@ class FileInfo:
 
     @property
     def dim_str(self) -> str:
-        return f"{self.dim[0]}×{self.dim[1]} px" if self.dim else "N/D"
+        return f"{self.dim[0]}×{self.dim[1]} px" if self.dim else t("N/A")
 
     @classmethod
     def from_path(cls, path: str) -> "FileInfo":
@@ -319,17 +326,17 @@ class FileInfo:
 
 @dataclass
 class Match:
-    """Abbinamento proposto tra un file da sostituire e un file sorgente."""
+    """Proposed pairing between a file to replace and a source file."""
 
     target: FileInfo
     source: FileInfo | None
-    score: float = float("inf")     # punteggio di ranking (dimensione + nome)
+    score: float = float("inf")     # ranking score (resolution + name)
     enabled: bool = False
-    manual: bool = False            # True se l'utente ha scelto la sorgente a mano
+    manual: bool = False            # True when the user picked the source
 
     @property
     def source_name(self) -> str:
-        return self.source.name if self.source else "NESSUNA CORRISPONDENZA"
+        return self.source.name if self.source else t("NO MATCH")
 
     @property
     def source_dim_str(self) -> str:
@@ -338,33 +345,38 @@ class Match:
     @property
     def quality(self) -> str:
         """
-        Giudizio leggibile sulla bontà dell'abbinamento.
+        Canonical grade of the match, in English, usable as a translation key.
 
-        Si basa sullo scarto di risoluzione, non sul punteggio di ranking:
-        quest'ultimo include la somiglianza del nome, che serve a scegliere
-        tra candidati equivalenti ma non deve declassare una corrispondenza
-        dimensionalmente perfetta.
+        It is based on the resolution gap, not on the ranking score: the
+        latter includes name similarity, which is there to choose between
+        equivalent candidates and must not downgrade a dimensionally perfect
+        match.
         """
         if self.source is None:
-            return "—"
+            return QUALITY_NONE
         if self.manual:
-            return "Manuale"
+            return QUALITY_MANUAL
 
         if self.target.dim is None or self.source.dim is None:
             similarity = name_similarity(self.target.path, self.source.path)
-            return "Buona" if similarity >= NAME_ONLY_GOOD else "Debole"
+            return QUALITY_GOOD_LABEL if similarity >= NAME_ONLY_GOOD else QUALITY_WEAK
 
         relative = dimension_distance(self.target.dim, self.source.dim)
         if relative <= QUALITY_GOOD:
-            return "Ottima"
+            return QUALITY_EXCELLENT
         if relative <= QUALITY_FAIR:
-            return "Buona"
-        return "Debole"
+            return QUALITY_GOOD_LABEL
+        return QUALITY_WEAK
+
+    @property
+    def quality_label(self) -> str:
+        """Grade translated into the active language, for display."""
+        return t(self.quality)
 
 
 @dataclass
 class ReplaceOutcome:
-    """Esito della sostituzione di un singolo file."""
+    """Outcome of replacing a single file."""
 
     target: str
     source: str
@@ -379,7 +391,7 @@ class ReplaceOutcome:
 
 @dataclass
 class ReplaceReport:
-    """Riepilogo di un'intera sessione di sostituzione."""
+    """Summary of a whole replacement session."""
 
     outcomes: list[ReplaceOutcome] = field(default_factory=list)
     cancelled: bool = False
@@ -402,41 +414,42 @@ class ReplaceReport:
 
 
 # ---------------------------------------------------------------------------
-# Scansione
+# Scanning
 # ---------------------------------------------------------------------------
 
 def parse_patterns(raw: str) -> list[str]:
     """
-    Interpreta la chiave di ricerca inserita dall'utente.
-    Sono ammessi più pattern separati da `;` o `,` (es. `logo*.png; banner*.jpg`).
+    Parse the search key entered by the user.
+    Multiple patterns separated by `;` or `,` are allowed
+    (e.g. `logo*.png; banner*.jpg`).
     """
     parts = [p.strip() for p in re.split(r"[;,]", raw or "")]
     return [p for p in parts if p]
 
 
 def validate_pattern(raw: str) -> str | None:
-    """Ritorna un messaggio d'errore se il pattern non è utilizzabile, altrimenti None."""
+    """Return an error message if the pattern is unusable, otherwise None."""
     patterns = parse_patterns(raw)
     if not patterns:
-        return "Inserisci almeno un pattern di ricerca."
-    for pat in patterns:
-        if "/" in pat or "\\" in pat:
-            return (f"Il pattern «{pat}» contiene un separatore di percorso: "
-                    "indica solo il nome del file (es. logo*.png).")
-        if set(pat) <= {"*", "?", " "}:
-            return (f"Il pattern «{pat}» è troppo generico e selezionerebbe "
-                    "qualsiasi file. Specifica almeno un'estensione.")
+        return t("Enter at least one search pattern.")
+    for pattern in patterns:
+        if "/" in pattern or "\\" in pattern:
+            return t("Pattern «{pattern}» contains a path separator: give the "
+                     "file name only (e.g. logo*.png).").format(pattern=pattern)
+        if set(pattern) <= {"*", "?", " "}:
+            return t("Pattern «{pattern}» is too broad and would select any "
+                     "file. Specify at least an extension.").format(pattern=pattern)
     return None
 
 
 def matches_patterns(filename: str, patterns: Sequence[str]) -> bool:
-    """True se il nome file corrisponde ad almeno uno dei pattern (case-insensitive)."""
+    """True if the file name matches at least one pattern (case-insensitive)."""
     lowered = filename.lower()
     return any(fnmatch.fnmatchcase(lowered, p.lower()) for p in patterns)
 
 
 def is_within(path: str, folder: str) -> bool:
-    """True se `path` si trova dentro `folder` (o coincide con esso)."""
+    """True if `path` sits inside `folder` (or is the same folder)."""
     try:
         Path(os.path.realpath(path)).relative_to(os.path.realpath(folder))
         return True
@@ -454,14 +467,14 @@ def scan_files(
     on_error: Callable[[str, Exception], None] | None = None,
 ) -> list[str]:
     """
-    Scansiona `folder` ricorsivamente restituendo i file che corrispondono
-    al pattern (o ai pattern separati da `;`).
+    Scan `folder` recursively and return the files matching the pattern (or the
+    patterns separated by `;`).
 
-    exclude_dirs  cartelle da saltare, tipicamente la cartella sorgente quando
-                  è annidata dentro quella da scansionare
-    skip_backups  ignora i file `.bak` generati dal tool stesso
-    cancel_event  se impostato, interrompe la scansione con OperationCancelled
-    on_error      callback per gli errori di accesso (share di rete, permessi)
+    exclude_dirs  folders to skip, typically the source folder when it is
+                  nested inside the folder being scanned
+    skip_backups  ignore the `.bak` files produced by the tool itself
+    cancel_event  when set, aborts the scan with OperationCancelled
+    on_error      callback for access errors (network shares, permissions)
     """
     patterns = parse_patterns(pattern)
     if not patterns:
@@ -479,10 +492,10 @@ def scan_files(
         if cancel_event is not None and cancel_event.is_set():
             raise OperationCancelled()
 
-        # Protezione contro cicli via junction/symlink su share di rete.
+        # Guard against junction/symlink cycles on network shares.
         try:
-            st = os.stat(root)
-            key = (st.st_dev, st.st_ino)
+            stat = os.stat(root)
+            key = (stat.st_dev, stat.st_ino)
             if key in visited:
                 dirs[:] = []
                 continue
@@ -517,7 +530,7 @@ def collect_source_files(
     cancel_event: threading.Event | None = None,
     on_error: Callable[[str, Exception], None] | None = None,
 ) -> list[str]:
-    """Elenca tutti i file immagine supportati presenti nella cartella sorgente."""
+    """List every supported image file present in the source folder."""
     def _walk_error(exc: OSError) -> None:
         if on_error:
             on_error(getattr(exc, "filename", folder) or folder, exc)
@@ -533,11 +546,11 @@ def collect_source_files(
 
 
 # ---------------------------------------------------------------------------
-# Abbinamento
+# Matching
 # ---------------------------------------------------------------------------
 
 def name_similarity(path_a: str, path_b: str) -> float:
-    """Somiglianza [0..1] tra i nomi file (estensione esclusa)."""
+    """Similarity [0..1] between two file names, extension excluded."""
     stem_a = Path(path_a).stem.lower()
     stem_b = Path(path_b).stem.lower()
     return difflib.SequenceMatcher(None, stem_a, stem_b).ratio()
@@ -548,11 +561,10 @@ def dimension_distance(
     source_dim: tuple[int, int] | None,
 ) -> float:
     """
-    Scarto di risoluzione *relativo* in [0..1], 0 = risoluzioni identiche.
+    *Relative* resolution gap in [0..1]; 0 means identical resolutions.
 
-    La distanza euclidea viene normalizzata sulla diagonale del target, così
-    che uno scarto di 20 px pesi molto su un'icona 32×32 e poco su un banner
-    1920×1080.
+    The euclidean distance is normalised over the target diagonal, so a 20 px
+    gap weighs heavily on a 32×32 icon and lightly on a 1920×1080 banner.
     """
     if target_dim is None or source_dim is None:
         return 1.0
@@ -567,18 +579,17 @@ def match_score(
     source_path: str,
 ) -> float:
     """
-    Punteggio di *ranking*: 0 = perfetto, valori maggiori = peggiore.
+    *Ranking* score: 0 is perfect, larger is worse.
 
-    Serve solo a ordinare i candidati fra loro. Lo scarto di risoluzione pesa
-    il 65%, la somiglianza del nome il restante 35%: quest'ultima fa da
-    spareggio quando più sorgenti hanno la stessa risoluzione.
-    Il giudizio mostrato all'utente usa invece `Match.quality`, che guarda
-    alla sola risoluzione.
+    Used only to order candidates against each other. The resolution gap
+    weighs 65%, name similarity the remaining 35%; the latter breaks ties when
+    several sources share the same resolution. The grade shown to the user
+    comes from `Match.quality`, which looks at resolution alone.
     """
     name_component = 1.0 - name_similarity(target_path, source_path)
 
     if target_dim is None or source_dim is None:
-        # Senza risoluzioni confrontabili resta solo il nome.
+        # With no comparable resolutions only the name is left.
         return name_component
 
     return (WEIGHT_DIMENSION * dimension_distance(target_dim, source_dim)
@@ -587,10 +598,10 @@ def match_score(
 
 class DimensionCache:
     """
-    Cache delle risoluzioni dei file.
+    Cache of file resolutions.
 
-    Senza cache l'abbinamento riapre ogni immagine sorgente per ogni file
-    target (O(N×M) letture da disco), che su una share di rete è proibitivo.
+    Without it, matching reopens every source image for every target file
+    (O(N×M) disk reads), which is prohibitive on a network share.
     """
 
     def __init__(self) -> None:
@@ -614,14 +625,14 @@ def find_best_match(
     sources: Sequence[FileInfo],
 ) -> tuple[FileInfo | None, float]:
     """
-    Individua il file sorgente più adatto a sostituire `target`.
+    Find the source file best suited to replace `target`.
 
-    Criteri, in ordine di importanza:
-      1. stesso formato (con `.jpg`/`.jpeg` e `.tif`/`.tiff` equivalenti);
-      2. risoluzione più vicina possibile;
-      3. nome file più simile, come spareggio.
+    Criteria, in order of importance:
+      1. same format (with `.jpg`/`.jpeg` and `.tif`/`.tiff` equivalent);
+      2. closest possible resolution;
+      3. most similar file name, as a tie-break.
 
-    Ritorna `(sorgente, punteggio)`; `(None, inf)` se nessun candidato.
+    Returns `(source, score)`; `(None, inf)` when there is no candidate.
     """
     target_ext = normalized_ext(target.ext)
     candidates = [s for s in sources if normalized_ext(s.ext) == target_ext]
@@ -642,7 +653,7 @@ def build_matches(
     progress: Callable[[int, int], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> list[Match]:
-    """Costruisce la lista di abbinamenti proposti per tutti i target."""
+    """Build the list of proposed matches for every target."""
     matches: list[Match] = []
     total = len(targets)
     for index, target in enumerate(targets, 1):
@@ -658,16 +669,16 @@ def build_matches(
 
 
 # ---------------------------------------------------------------------------
-# Backup e sostituzione
+# Backup and replacement
 # ---------------------------------------------------------------------------
 
 def make_backup_path(target: str) -> str:
     """
-    Percorso di backup che non sovrascrive backup già esistenti.
+    Backup path that never overwrites an existing backup.
 
-    Alla prima esecuzione produce `file.png.bak`; se quel file esiste già
-    (seconda campagna di rebranding sulla stessa cartella) ripiega su
-    `file.png.20260806-101500.bak`, così l'originale non viene mai perso.
+    The first run produces `file.png.bak`; if that already exists (a second
+    rebranding campaign over the same folder) it falls back to
+    `file.png.20260806-101500.bak`, so the original is never lost.
     """
     simple = target + BACKUP_SUFFIX
     if not os.path.exists(simple):
@@ -690,28 +701,28 @@ def replace_file(
     dry_run: bool = False,
 ) -> ReplaceOutcome:
     """
-    Sostituisce `target` con il contenuto di `source`.
+    Replace `target` with the contents of `source`.
 
-    La copia avviene su un file temporaneo nella stessa cartella, poi
-    promosso con `os.replace`: se qualcosa va storto a metà copia il file
-    originale resta intatto, mai troncato.
+    The copy goes to a temporary file in the same folder and is then promoted
+    with `os.replace`: if anything fails halfway through the copy the original
+    file stays intact, never truncated.
     """
     if not os.path.isfile(source):
         return ReplaceOutcome(target, source, "error",
-                              "File sorgente non trovato o non è un file.")
+                              t("Source file not found, or not a file."))
     if not os.path.isfile(target):
         return ReplaceOutcome(target, source, "error",
-                              "File da sostituire non trovato o non è un file.")
+                              t("File to replace not found, or not a file."))
     try:
         if os.path.samefile(source, target):
             return ReplaceOutcome(target, source, "skipped",
-                                  "Sorgente e destinazione sono lo stesso file.")
+                                  t("Source and destination are the same file."))
     except OSError:
         pass
 
     if dry_run:
-        note = "Simulazione: nessuna modifica scritta su disco."
-        return ReplaceOutcome(target, source, "ok", note,
+        return ReplaceOutcome(target, source, "ok",
+                              t("Dry run: nothing written to disk."),
                               make_backup_path(target) if backup else None)
 
     backup_path: str | None = None
@@ -726,7 +737,7 @@ def replace_file(
         fd, tmp_path = tempfile.mkstemp(prefix=".rebranding_", dir=folder)
         os.close(fd)
         shutil.copy2(source, tmp_path)
-        os.replace(tmp_path, target)   # atomico sullo stesso filesystem
+        os.replace(tmp_path, target)   # atomic on the same filesystem
         tmp_path = None
 
         return ReplaceOutcome(target, source, "ok", "", backup_path)
@@ -750,7 +761,7 @@ def replace_all(
     progress: Callable[[int, int, ReplaceOutcome], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> ReplaceReport:
-    """Esegue la sostituzione su tutti gli abbinamenti passati."""
+    """Run the replacement over every match passed in."""
     report = ReplaceReport()
     total = len(matches)
 
@@ -759,8 +770,7 @@ def replace_all(
             report.cancelled = True
             break
         if match.source is None:
-            outcome = ReplaceOutcome(match.target.path, "", "skipped",
-                                     "Nessuna corrispondenza.")
+            outcome = ReplaceOutcome(match.target.path, "", "skipped", t("No match."))
         else:
             outcome = replace_file(match.target.path, match.source.path,
                                    backup=backup, dry_run=dry_run)
@@ -778,10 +788,9 @@ _TIMESTAMPED_BAK_RE = re.compile(
 
 def backup_origin(backup_path: str) -> str:
     """
-    Percorso originale a partire da un file di backup.
+    Original path derived from a backup file.
 
-    `logo.png.bak` e `logo.png.20260806-101500.bak` restituiscono entrambi
-    `logo.png`.
+    `logo.png.bak` and `logo.png.20260806-101500.bak` both yield `logo.png`.
     """
     without_stamp = _TIMESTAMPED_BAK_RE.sub("", backup_path)
     if without_stamp != backup_path:
@@ -793,12 +802,12 @@ def backup_origin(backup_path: str) -> str:
 
 def backup_age_key(backup_path: str) -> tuple:
     """
-    Chiave di ordinamento cronologico dei backup di uno stesso file.
+    Chronological sort key for the backups of one file.
 
-    Il backup senza timestamp (`logo.png.bak`) è sempre il primo creato, quindi
-    il più vecchio; quelli con timestamp seguono in ordine di data. Ordinare
-    per nome non basta: `logo.png.20260806-101500.bak` precederebbe
-    alfabeticamente `logo.png.bak`, invertendo l'ordine reale.
+    The backup without a timestamp (`logo.png.bak`) is always the first one
+    created, hence the oldest; timestamped ones follow in date order. Sorting
+    by name is not enough: `logo.png.20260806-101500.bak` would sort before
+    `logo.png.bak`, inverting the real order.
     """
     match = _TIMESTAMPED_BAK_RE.search(backup_path)
     if not match:
@@ -808,10 +817,9 @@ def backup_age_key(backup_path: str) -> tuple:
 
 def find_backups(folder: str) -> list[str]:
     """
-    Elenca ricorsivamente i backup presenti in `folder`.
+    List the backups present in `folder`, recursively.
 
-    L'ordine è per file originale e, all'interno, dal più vecchio al più
-    recente.
+    Ordered by original file and, within each, from oldest to newest.
     """
     found: list[str] = []
     for root, _dirs, files in os.walk(folder, followlinks=False):
@@ -829,33 +837,33 @@ def restore_backups(
     cancel_event: threading.Event | None = None,
 ) -> ReplaceReport:
     """
-    Ripristina i file originali dai backup `.bak` presenti in `folder`.
+    Restore the original files from the `.bak` backups found in `folder`.
 
-    Se per lo stesso file esistono più backup viene usato il più vecchio,
-    cioè quello anteriore alla prima sostituzione.
+    When several backups exist for the same file the oldest one is used, that
+    is the one predating the first replacement.
     """
     report = ReplaceReport()
     backups = find_backups(folder)
 
-    # Un solo backup per file originale: il primo in ordine (il più vecchio).
+    # One backup per original file: the first in order (the oldest).
     chosen: dict[str, str] = {}
-    for bak in backups:
-        chosen.setdefault(backup_origin(bak), bak)
+    for backup in backups:
+        chosen.setdefault(backup_origin(backup), backup)
 
     items = sorted(chosen.items())
     total = len(items)
 
-    for index, (origin, bak) in enumerate(items, 1):
+    for index, (origin, backup) in enumerate(items, 1):
         if cancel_event is not None and cancel_event.is_set():
             report.cancelled = True
             break
         try:
-            shutil.copy2(bak, origin)
+            shutil.copy2(backup, origin)
             if remove_backup:
-                os.remove(bak)
-            outcome = ReplaceOutcome(origin, bak, "ok", "Ripristinato dal backup.")
+                os.remove(backup)
+            outcome = ReplaceOutcome(origin, backup, "ok", t("Restored from backup."))
         except Exception as exc:
-            outcome = ReplaceOutcome(origin, bak, "error", str(exc))
+            outcome = ReplaceOutcome(origin, backup, "error", str(exc))
         report.outcomes.append(outcome)
         if progress:
             progress(index, total, outcome)
@@ -864,28 +872,28 @@ def restore_backups(
 
 
 # ---------------------------------------------------------------------------
-# Export CSV
+# CSV export
 # ---------------------------------------------------------------------------
 
 def export_matches_csv(matches: Sequence[Match], destination: str) -> str:
-    """Esporta gli abbinamenti in CSV (separatore `;`, compatibile con Excel IT)."""
+    """Export the matches to CSV (`;` separator, Excel-friendly in Europe)."""
     with open(destination, "w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.writer(fh, delimiter=";")
         writer.writerow([
-            "Incluso", "File da sostituire", "Formato", "Risoluzione target",
-            "Peso target", "Nuovo file sorgente", "Risoluzione sorgente",
-            "Qualità", "Punteggio", "Percorso target", "Percorso sorgente",
+            t("Included"), t("File to Replace"), t("Format"), t("Target resolution"),
+            t("Target weight"), t("New Source File"), t("Source resolution"),
+            t("Quality"), t("Score"), t("Target path"), t("Source path"),
         ])
         for match in matches:
             writer.writerow([
-                "SI" if match.enabled else "NO",
+                t("YES") if match.enabled else t("NO"),
                 match.target.name,
                 match.target.fmt,
                 match.target.dim_str,
                 match.target.size_str,
                 match.source_name,
                 match.source_dim_str,
-                match.quality,
+                match.quality_label,
                 "" if match.score == float("inf") else f"{match.score:.4f}",
                 match.target.path,
                 match.source.path if match.source else "",
@@ -894,10 +902,11 @@ def export_matches_csv(matches: Sequence[Match], destination: str) -> str:
 
 
 def export_report_csv(report: ReplaceReport, destination: str) -> str:
-    """Esporta l'esito di una sostituzione in CSV."""
+    """Export the outcome of a replacement to CSV."""
     with open(destination, "w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.writer(fh, delimiter=";")
-        writer.writerow(["Esito", "File", "Sorgente", "Backup", "Messaggio"])
+        writer.writerow([t("Outcome"), t("File"), t("Source"), t("Backup"),
+                         t("Message")])
         for outcome in report.outcomes:
             writer.writerow([
                 outcome.status.upper(), outcome.target, outcome.source,
@@ -907,11 +916,12 @@ def export_report_csv(report: ReplaceReport, destination: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Persistenza impostazioni
+# Settings persistence
 # ---------------------------------------------------------------------------
 
 SETTINGS_FILE = "settings.json"
 DEFAULT_SETTINGS: dict[str, object] = {
+    "language": i18n.DEFAULT_LANGUAGE,
     "source_folder": "",
     "scan_folder": "",
     "search_pattern": "logo*.png",
@@ -925,7 +935,7 @@ def settings_path() -> str:
 
 
 def load_settings() -> dict:
-    """Carica le ultime impostazioni usate; ritorna i default se assenti o corrotte."""
+    """Load the last used settings; return defaults if absent or corrupted."""
     settings = dict(DEFAULT_SETTINGS)
     try:
         with open(settings_path(), encoding="utf-8") as fh:
@@ -934,11 +944,14 @@ def load_settings() -> dict:
             settings.update({k: v for k, v in stored.items() if k in DEFAULT_SETTINGS})
     except (OSError, ValueError):
         pass
+
+    if settings["language"] not in i18n.LANGUAGES:
+        settings["language"] = i18n.DEFAULT_LANGUAGE
     return settings
 
 
 def save_settings(values: dict) -> bool:
-    """Salva le impostazioni. Ritorna False se il salvataggio non è possibile."""
+    """Save the settings. Returns False when saving is not possible."""
     try:
         payload = {k: v for k, v in values.items() if k in DEFAULT_SETTINGS}
         with open(settings_path(), "w", encoding="utf-8") as fh:
@@ -949,20 +962,20 @@ def save_settings(values: dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Validazione configurazione
+# Configuration validation
 # ---------------------------------------------------------------------------
 
 def validate_config(source_folder: str, scan_folder: str, pattern: str) -> list[str]:
     """
-    Valida la configurazione della scansione.
-    Ritorna la lista dei problemi bloccanti (vuota se tutto ok).
+    Validate the scan configuration.
+    Returns the list of blocking problems (empty when everything is fine).
     """
     problems: list[str] = []
 
     if not source_folder or not os.path.isdir(source_folder):
-        problems.append("Seleziona una cartella sorgente valida.")
+        problems.append(t("Select a valid source folder."))
     if not scan_folder or not os.path.isdir(scan_folder):
-        problems.append("Seleziona una cartella da scansionare valida.")
+        problems.append(t("Select a valid folder to scan."))
 
     pattern_error = validate_pattern(pattern)
     if pattern_error:
@@ -973,8 +986,8 @@ def validate_config(source_folder: str, scan_folder: str, pattern: str) -> list[
         try:
             if os.path.samefile(source_folder, scan_folder):
                 problems.append(
-                    "La cartella sorgente e quella da scansionare coincidono: "
-                    "i nuovi loghi verrebbero sostituiti con se stessi."
+                    t("The source folder and the folder to scan are the same: "
+                      "the new logos would be replaced with themselves.")
                 )
         except OSError:
             pass
@@ -983,13 +996,13 @@ def validate_config(source_folder: str, scan_folder: str, pattern: str) -> list[
 
 
 def config_warnings(source_folder: str, scan_folder: str) -> list[str]:
-    """Avvisi non bloccanti sulla configurazione scelta."""
+    """Non-blocking warnings about the chosen configuration."""
     warnings: list[str] = []
     if not (source_folder and scan_folder):
         return warnings
     if is_within(source_folder, scan_folder):
         warnings.append(
-            "La cartella sorgente si trova dentro quella da scansionare: "
-            "verrà esclusa automaticamente dalla ricerca."
+            t("The source folder sits inside the folder to scan: it will be "
+              "excluded from the search automatically.")
         )
     return warnings

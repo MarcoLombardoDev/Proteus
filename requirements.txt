@@ -1,12 +1,12 @@
-# Rebranding Tool - dipendenze di runtime
+# Rebranding Tool - runtime dependencies
 #
-# pillow >= 9.1 e' obbligatorio: Image.Resampling e' stato introdotto li'.
+# pillow >= 9.1 is mandatory: Image.Resampling was introduced there.
 pillow>=9.1,<13
 
-# ttkbootstrap e' opzionale (l'app funziona con i temi ttk standard) ma
-# migliora l'aspetto. La 2.x ha rimosso il supporto a `bootstyle` sui widget
-# ttk standard: l'app non lo usa piu', quindi entrambe le major sono ok.
+# ttkbootstrap is optional (the app works with the standard ttk themes) but
+# improves the look. 2.x dropped `bootstyle` support on standard ttk widgets;
+# the app no longer uses it, so either major version is fine.
 ttkbootstrap>=1.10
 
-# Necessario solo per generare l'eseguibile (compile.bat / build.py).
+# Needed only to build the standalone executable (build.py).
 pyinstaller>=5.13

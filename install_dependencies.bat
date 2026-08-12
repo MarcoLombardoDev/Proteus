@@ -1,26 +1,26 @@
 @echo off
 setlocal
 echo ========================================
-echo   REBRANDING TOOL - INSTALLAZIONE DIPENDENZE
+echo   REBRANDING TOOL - INSTALL DEPENDENCIES
 echo ========================================
 echo.
 
 py --version >nul 2>&1
 if errorlevel 1 (
-    echo ERRORE: Python non trovato.
-    echo Installa Python 3.10 o superiore da https://www.python.org/downloads/
-    echo Durante l'installazione lascia selezionata l'opzione "tcl/tk and IDLE".
+    echo ERROR: Python not found.
+    echo Install Python 3.10 or newer from https://www.python.org/downloads/
+    echo During setup, keep the "tcl/tk and IDLE" option selected.
     echo.
     pause
     exit /b 1
 )
 
-REM tkinter fa parte della libreria standard ma su alcune installazioni
-REM Windows viene escluso: senza, l'applicazione non puo' partire.
+REM tkinter is part of the standard library but some Windows installs skip it;
+REM without it the application cannot start.
 py -c "import tkinter" >nul 2>&1
 if errorlevel 1 (
-    echo ERRORE: il componente tkinter non e' installato.
-    echo Reinstalla Python selezionando l'opzione "tcl/tk and IDLE".
+    echo ERROR: the tkinter component is not installed.
+    echo Reinstall Python with the "tcl/tk and IDLE" option selected.
     echo.
     pause
     exit /b 1
@@ -33,18 +33,18 @@ py -m pip install -r requirements.txt
 if errorlevel 1 goto :failed
 
 echo.
-echo Verifica installazione...
-py -c "import PIL, tkinter; print('OK: Pillow e tkinter disponibili')"
+echo Verifying the installation...
+py -c "import PIL, tkinter; print('OK: Pillow and tkinter are available')"
 if errorlevel 1 goto :failed
 
 echo.
-echo Dipendenze installate con successo!
+echo Dependencies installed successfully.
 pause
 exit /b 0
 
 :failed
 echo.
-echo ERRORE: installazione delle dipendenze non riuscita.
-echo Se sei su una rete aziendale potrebbe servire un proxy o un indice pip interno.
+echo ERROR: dependency installation failed.
+echo On a corporate network you may need a proxy or an internal pip index.
 pause
 exit /b 1
