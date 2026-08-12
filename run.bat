@@ -1,13 +1,13 @@
 @echo off
 setlocal
 echo ========================================
-echo   REBRANDING TOOL - AVVIO DIRETTO
+echo   REBRANDING TOOL - RUN FROM SOURCE
 echo ========================================
 echo.
 
 py --version >nul 2>&1
 if errorlevel 1 (
-    echo ERRORE: Python non trovato. Esegui prima install_dependencies.bat
+    echo ERROR: Python not found. Run install_dependencies.bat first.
     pause
     exit /b 1
 )
@@ -15,8 +15,8 @@ if errorlevel 1 (
 py "%~dp0main.py"
 if errorlevel 1 (
     echo.
-    echo L'applicazione si e' chiusa con un errore.
-    echo Controlla i file nella cartella logs.
+    echo The application exited with an error.
+    echo Check the files in the logs folder.
     pause
     exit /b 1
 )

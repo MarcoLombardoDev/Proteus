@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Script per la compilazione di Rebranding Tool con PyInstaller.
+Build script for Rebranding Tool, using PyInstaller.
 """
 
 from __future__ import annotations
@@ -14,18 +14,18 @@ import sys
 import time
 from pathlib import Path
 
-#: PyInstaller usa ';' su Windows e ':' altrove per separare sorgente e
-#: destinazione in --add-data. Il valore era cablato a ';' e rompeva la build
-#: su qualunque piattaforma non Windows.
+#: PyInstaller uses ';' on Windows and ':' elsewhere to separate source from
+#: destination in --add-data. The value used to be hardcoded to ';', which broke
+#: the build on every non-Windows platform.
 DATA_SEP = os.pathsep
 
 
 def python_launcher() -> list[str]:
     """
-    Comando da usare per invocare Python.
+    Command used to invoke Python.
 
-    `py` esiste solo su Windows e non nei virtual environment: si ripiega
-    sull'interprete che sta eseguendo questo script, che è sempre corretto.
+    `py` only exists on Windows and not inside virtual environments, so we fall
+    back to the interpreter running this script, which is always correct.
     """
     if os.name == "nt":
         try:
@@ -53,67 +53,67 @@ class RebrandingToolBuilder:
     def _ensure_module(self, module: str, package: str) -> bool:
         probe = self._run(["-c", f"import {module}"])
         if probe.returncode == 0:
-            print(f"✅ {package} disponibile")
+            print(f"✅ {package} available")
             return True
 
-        print(f"⚠️  {package} non trovato, installazione in corso...")
+        print(f"⚠️  {package} not found, installing...")
         install = self._run(["-m", "pip", "install", package])
         if install.returncode != 0:
-            print(f"❌ Errore installazione {package}: {install.stderr.strip()[-500:]}")
+            print(f"❌ Failed to install {package}: {install.stderr.strip()[-500:]}")
             return False
-        print(f"✅ {package} installato")
+        print(f"✅ {package} installed")
         return True
 
     def check_prerequisites(self) -> bool:
-        print("🔍 Verifica prerequisiti...")
+        print("🔍 Checking prerequisites...")
         print(f"✅ Python: {sys.version.split()[0]} ({' '.join(self.python)})")
 
         if not self._ensure_module("PyInstaller", "pyinstaller"):
             return False
         if not self._ensure_module("PIL", "pillow"):
             return False
-        # ttkbootstrap è opzionale: l'app funziona anche senza, con i temi ttk.
+        # ttkbootstrap is optional: the app also works without it, on ttk themes.
         self._ensure_module("ttkbootstrap", "ttkbootstrap")
 
         for required in (self.main_script, "rebranding_tool.py", "core.py"):
             if not os.path.exists(required):
-                print(f"❌ File non trovato: {required}")
+                print(f"❌ File not found: {required}")
                 return False
-            print(f"✅ File trovato: {required}")
+            print(f"✅ Found file: {required}")
 
         return True
 
     def clean_temp_directories(self) -> None:
-        print("🧹 Pulizia cartelle temporanee...")
+        print("🧹 Cleaning temporary folders...")
         for temp_dir in ("build", "dist", "__pycache__"):
             if os.path.exists(temp_dir):
                 try:
                     shutil.rmtree(temp_dir)
-                    print(f"  ✅ {temp_dir} rimosso")
+                    print(f"  ✅ {temp_dir} removed")
                 except OSError as exc:
-                    print(f"  ⚠️  Impossibile rimuovere {temp_dir}: {exc}")
+                    print(f"  ⚠️  Could not remove {temp_dir}: {exc}")
         time.sleep(1)
 
     def build_executable(self) -> str | None:
-        print("🔨 Compilazione eseguibile...")
+        print("🔨 Building the executable...")
 
         hidden_imports = [
             "tkinter", "tkinter.ttk", "tkinter.filedialog",
             "tkinter.messagebox", "tkinter.scrolledtext",
             "PIL", "PIL.Image", "PIL.ImageTk",
-            # PyInstaller non lo trova da solo: senza, ImageTk fallisce a
-            # runtime con "No module named 'PIL._tkinter_finder'" e nel .exe
-            # spariscono banner e anteprime.
+            # PyInstaller does not find it on its own: without it ImageTk
+            # fails at runtime with "No module named 'PIL._tkinter_finder'" and
+            # the image previews disappear from the .exe.
             "PIL._tkinter_finder",
             "core", "rebranding_tool",
         ]
 
         add_data = []
-        for asset in ("sace.ico", "banner.jpg"):
+        for asset in ("app.ico",):
             if os.path.exists(asset):
                 add_data.append(f"{asset}{DATA_SEP}.")
             else:
-                print(f"⚠️  Risorsa mancante, non inclusa: {asset}")
+                print(f"⚠️  Missing resource, not bundled: {asset}")
 
         excludes = [
             "matplotlib", "numpy", "pandas", "scipy",
@@ -131,8 +131,8 @@ class RebrandingToolBuilder:
             "--clean",
         ]
 
-        if os.path.exists("sace.ico"):
-            cmd.append("--icon=sace.ico")
+        if os.path.exists("app.ico"):
+            cmd.append("--icon=app.ico")
 
         for imp in hidden_imports:
             cmd += ["--hidden-import", imp]
@@ -141,24 +141,24 @@ class RebrandingToolBuilder:
         for exc in excludes:
             cmd += ["--exclude-module", exc]
 
-        # --collect-all raccoglie moduli, sottomoduli e risorse in un colpo solo.
-        # La versione precedente lo combinava con --add-data sulla stessa
-        # cartella e con --collect-submodules/--collect-data, duplicando i file.
+        # --collect-all gathers modules, submodules and resources in one go.
+        # The previous version combined it with --add-data on the same folder
+        # plus --collect-submodules/--collect-data, duplicating the files.
         if self._run(["-c", "import ttkbootstrap"]).returncode == 0:
             cmd += ["--collect-all", "ttkbootstrap"]
-            print("✅ Risorse ttkbootstrap incluse")
+            print("✅ ttkbootstrap resources bundled")
 
         cmd.append(self.main_script)
 
-        print("🚀 Avvio compilazione...")
+        print("🚀 Starting the build...")
         try:
             result = self._run(cmd, timeout=900)
         except subprocess.TimeoutExpired:
-            print("❌ Timeout compilazione (>15 minuti)")
+            print("❌ Build timed out (>15 minutes)")
             return None
 
         if result.returncode != 0:
-            print(f"❌ Errore compilazione (codice {result.returncode}):")
+            print(f"❌ Build failed (exit code {result.returncode}):")
             if result.stdout:
                 print(f"   STDOUT: {result.stdout[-2000:]}")
             if result.stderr:
@@ -167,29 +167,29 @@ class RebrandingToolBuilder:
 
         exe_path = os.path.join(self.output_dir, f"{self.app_name}{self.exe_suffix}")
         if not os.path.exists(exe_path):
-            print(f"❌ Eseguibile non trovato dopo la compilazione: {exe_path}")
+            print(f"❌ Executable not found after the build: {exe_path}")
             return None
 
         size_mb = os.path.getsize(exe_path) / (1024 * 1024)
-        print("✅ Compilazione completata!")
-        print(f"📁 Eseguibile: {exe_path}")
-        print(f"📏 Dimensione: {size_mb:.1f} MB")
+        print("✅ Build complete!")
+        print(f"📁 Executable: {exe_path}")
+        print(f"📏 Size: {size_mb:.1f} MB")
         return exe_path
 
     def create_distribution(self, exe_path: str) -> bool:
-        print("📦 Preparazione distribuzione...")
+        print("📦 Preparing the distribution...")
         logs_dir = os.path.join(self.output_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        print(f"  📁 Cartella creata: {logs_dir}")
+        print(f"  📁 Folder created: {logs_dir}")
 
-        readme = Path(self.output_dir) / "LEGGIMI.txt"
+        readme = Path(self.output_dir) / "READ_ME_FIRST.txt"
         readme.write_text(
-            "Rebranding Tool - SACE S.p.A\n"
-            "============================\n\n"
-            f"Eseguibile: {os.path.basename(exe_path)}\n"
-            "I log vengono scritti nella cartella 'logs' accanto all'eseguibile.\n"
-            "Se l'eseguibile si trova in un percorso di sola lettura, i log\n"
-            "finiscono in %LOCALAPPDATA%\\RebrandingTool\\logs.\n",
+            "Rebranding Tool\n"
+            "===============\n\n"
+            f"Executable: {os.path.basename(exe_path)}\n"
+            "Logs are written to the 'logs' folder next to the executable.\n"
+            "If the executable lives in a read-only location, logs go to\n"
+            "%LOCALAPPDATA%\\RebrandingTool\\logs instead.\n",
             encoding="utf-8",
         )
         return True
@@ -201,7 +201,7 @@ class RebrandingToolBuilder:
         print()
 
         if not self.check_prerequisites():
-            print("\n❌ BUILD FALLITO: prerequisiti non soddisfatti")
+            print("\n❌ BUILD FAILED: prerequisites not met")
             return False
 
         print()
@@ -210,19 +210,19 @@ class RebrandingToolBuilder:
 
         exe_path = self.build_executable()
         if not exe_path:
-            print("\n❌ BUILD FALLITO: errore durante la compilazione")
+            print("\n❌ BUILD FAILED: error during compilation")
             return False
 
         print()
         self.create_distribution(exe_path)
         print()
         print("=" * 55)
-        print("   BUILD COMPLETATO CON SUCCESSO!")
+        print("   BUILD COMPLETED SUCCESSFULLY!")
         print("=" * 55)
-        print(f"📁 Eseguibile: {exe_path}")
+        print(f"📁 Executable: {exe_path}")
         print(f"📁 Logs: {os.path.join(self.output_dir, 'logs')}")
         print()
-        print("✅ L'applicazione è pronta per la distribuzione!")
+        print("✅ The application is ready for distribution!")
         return True
 
 
@@ -231,10 +231,10 @@ def main() -> int:
     try:
         return 0 if builder.build() else 1
     except KeyboardInterrupt:
-        print("\n⚠️  Operazione interrotta dall'utente")
+        print("\n⚠️  Interrupted by the user")
         return 1
     except Exception as exc:
-        print(f"\n❌ Errore imprevisto: {exc}")
+        print(f"\n❌ Unexpected error: {exc}")
         return 1
 
 

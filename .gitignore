@@ -8,21 +8,21 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Logs e configurazione locale dell'applicazione
+# Application logs and local configuration
 logs/
 config/
 
-# Ambienti virtuali
+# Virtual environments
 .venv/
 venv/
 env/
 
-# Test
+# Tests
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Editor / OS
+# Editors / OS
 .vscode/
 .idea/
 *.swp
@@ -30,5 +30,8 @@ htmlcov/
 Thumbs.db
 .DS_Store
 
-# Backup file generati dal tool
+# Backup files produced by the tool
 *.bak
+
+# Icon generator preview output
+app_preview.png

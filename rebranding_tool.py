@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Rebranding Tool - Strumento per la sostituzione massiva di file grafici/logo.
-SACE S.p.A - Interfaccia grafica.
+Rebranding Tool - bulk replacement of logo and graphic files.
+Graphical user interface.
 
-La logica applicativa (scansione, abbinamento, sostituzione) vive in `core.py`
-e non dipende da tkinter: questo modulo si occupa solo della presentazione.
+The application logic (scanning, matching, replacement) lives in `core.py` and
+does not depend on tkinter: this module only deals with presentation.
 """
 
 from __future__ import annotations
@@ -18,20 +18,22 @@ import os
 import re
 import threading
 import webbrowser
+from collections import deque
 from pathlib import Path
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import core
+import i18n
 from core import (
-    APP_COMPANY,
     APP_NAME,
     APP_VERSION,
     FileInfo,
     Match,
     OperationCancelled,
 )
+from i18n import t
 
 try:
     from PIL import Image, ImageTk
@@ -43,76 +45,73 @@ except ImportError:
 try:
     import ttkbootstrap as tb
     BOOTSTRAP_AVAILABLE = True
-except Exception:  # pragma: no cover - dipende dall'ambiente
+except Exception:  # pragma: no cover - environment dependent
     tb = None
     BOOTSTRAP_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
-# Palette e stili
+# Palette and styles
 # ---------------------------------------------------------------------------
 
-SACE_BLUE = "#3365ae"
+BRAND_BLUE = "#3365ae"
 
-#: Stili pulsante: (colore, colore hover, colore premuto).
-#: Vengono registrati come stili ttk nostri (`Primary.TButton`, ...) invece di
-#: affidarsi all'opzione `bootstyle` di ttkbootstrap, che esiste solo sui
-#: widget di quella libreria e fa fallire i widget ttk standard.
+#: Button styles: (base colour, hover colour, pressed colour).
+#: These are registered as our own ttk styles (`Primary.TButton`, ...) instead
+#: of relying on ttkbootstrap's `bootstyle` option, which only exists on that
+#: library's widgets and makes standard ttk widgets fail.
 BUTTON_PALETTE = {
-    "primary": (SACE_BLUE, "#28508a", "#1e3c6a"),
+    "primary": (BRAND_BLUE, "#28508a", "#1e3c6a"),
     "success": ("#28a745", "#218838", "#1c7430"),
     "warning": ("#e08e0b", "#c47c09", "#a86a08"),
     "danger":  ("#d9534f", "#c33f3b", "#a83531"),
 }
 
-PROGRESS_STYLE = "Sace.Horizontal.TProgressbar"
+PROGRESS_STYLE = "Brand.Horizontal.TProgressbar"
 
 PREVIEW_SIZE = (110, 80)
 MATCH_PREVIEW_SIZE = (90, 70)
 
-#: Colonne ordinabili numericamente invece che alfabeticamente.
+#: Columns sorted numerically rather than alphabetically.
 NUMERIC_COLUMNS = {"#"}
-#: Colonne ordinate per il valore reale sottostante (peso, risoluzione).
+#: Columns sorted by the real underlying value (weight, resolution).
 SORT_KEY_COLUMNS = {"size", "dim", "target_dim", "src_dim"}
 
-
-def _tag_from_match(match: Match) -> str:
-    if match.source is None:
-        return "no_match"
-    return "matched" if match.enabled else "disabled"
+#: Upper bound on the in-memory log, kept so the language switch can rebuild
+#: the interface without losing what the user has already seen.
+LOG_BUFFER_SIZE = 2000
 
 
 class RebrandingToolApp:
-    """Applicazione principale del Rebranding Tool."""
+    """Main Rebranding Tool application."""
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title(f"{APP_NAME} {APP_VERSION} - {APP_COMPANY}")
-        self.root.geometry("1150x780")
-        self.root.minsize(940, 660)
-
         self.logger = core.setup_logging()
 
-        # --- Stato ---
+        # --- State ---
         settings = core.load_settings()
+        i18n.set_language(str(settings["language"]))
+
         self.source_folder = tk.StringVar(value=str(settings["source_folder"]))
         self.scan_folder = tk.StringVar(value=str(settings["scan_folder"]))
         self.search_pattern = tk.StringVar(value=str(settings["search_pattern"]))
         self._backup_var = tk.BooleanVar(value=bool(settings["backup"]))
         self._dry_run_var = tk.BooleanVar(value=bool(settings["dry_run"]))
+        self._language_var = tk.StringVar(value=i18n.language_name(i18n.get_language()))
 
         self.scanned_files: list[FileInfo] = []
         self.source_files: list[FileInfo] = []
         self.matches: list[Match] = []
         self._match_by_path: dict[str, Match] = {}
 
-        # Riferimenti alle miniature attualmente visibili, uno per riquadro.
-        # Vedi `_keep_image` per il motivo per cui non stanno sui widget.
+        # Thumbnails currently on screen, one per preview box.
+        # See `_keep_image` for why they are not stored on the widgets.
         self._image_refs: dict[str, object] = {}
 
-        # --- Concorrenza ---
-        # Una sola operazione lunga per volta; l'evento consente l'annullamento.
-        self._ui_queue: "list[callable]" = []
+        # --- Concurrency ---
+        # One long operation at a time; the event allows cancellation.
+        self._ui_queue: list = []
         self._ui_lock = threading.Lock()
         self._cancel_event = threading.Event()
         self._worker: threading.Thread | None = None
@@ -120,49 +119,57 @@ class RebrandingToolApp:
         self._pump_after_id: str | None = None
         self._pending_progress: tuple[float, str] | None = None
         self._sort_state: dict[tuple[int, str], bool] = {}
+        self._log_buffer: deque[str] = deque(maxlen=LOG_BUFFER_SIZE)
 
         self.progress_var = tk.DoubleVar(value=0)
 
         # --- Setup ---
+        self._apply_window_chrome()
         self._set_window_icon()
         self._apply_theme()
         self._create_widgets()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._pump_ui_queue()
 
-        self.log(f"{APP_NAME} {APP_VERSION} avviato.")
+        self.log(t("{app} {version} started.").format(app=APP_NAME,
+                                                      version=APP_VERSION))
         if not PIL_AVAILABLE:
-            self.log("Pillow non disponibile: anteprime e risoluzioni immagine "
-                     "non saranno mostrate.", logging.WARNING)
+            self.log(t("Pillow is unavailable: image previews and resolutions "
+                       "will not be shown."), logging.WARNING)
 
     # ------------------------------------------------------------------
-    # Setup finestra
+    # Window setup
     # ------------------------------------------------------------------
+
+    def _apply_window_chrome(self):
+        self.root.title(f"{APP_NAME} {APP_VERSION}")
+        self.root.geometry("1150x780")
+        self.root.minsize(940, 660)
 
     def _set_window_icon(self):
-        icon = core.resource_path("sace.ico")
+        icon = core.resource_path("app.ico")
         if os.path.exists(icon):
             try:
                 self.root.iconbitmap(icon)
             except Exception:
-                pass  # iconbitmap .ico non è supportato su tutte le piattaforme
+                pass  # .ico via iconbitmap is not supported on every platform
 
     def _apply_theme(self):
         """
-        Applica il tema e registra gli stili dei pulsanti.
+        Apply the theme and register the button styles.
 
-        ttkbootstrap è opzionale e usato solo per il tema di base: tutti i
-        pulsanti usano stili ttk registrati qui, così l'app funziona anche
-        senza la libreria e con qualunque sua versione.
+        ttkbootstrap is optional and used only for the base theme: every button
+        uses a ttk style registered here, so the application also works without
+        the library and with any version of it.
         """
         self.style: ttk.Style | None = None
 
         if BOOTSTRAP_AVAILABLE:
             try:
                 self.style = tb.Style()
-                # `flatly` esiste solo fino alla 2.x ed è deprecato: si prova
-                # prima il nome moderno, così non si emette un warning né si
-                # dipende da un tema in via di rimozione.
+                # `flatly` only exists up to 2.x and is deprecated: try the
+                # modern name first, so no warning is emitted and we do not
+                # depend on a theme being removed.
                 available = set(self.style.theme_names())
                 for theme in ("bootstrap-light", "flatly", "litera", "cosmo"):
                     if theme in available:
@@ -174,8 +181,8 @@ class RebrandingToolApp:
         if self.style is None:
             self.style = ttk.Style()
             if "clam" in self.style.theme_names():
-                # 'clam' onora background/foreground sui pulsanti, i temi nativi
-                # Windows ("vista") li ignorerebbero.
+                # 'clam' honours background/foreground on buttons; the native
+                # Windows theme ("vista") would ignore them.
                 try:
                     self.style.theme_use("clam")
                 except tk.TclError:
@@ -195,25 +202,26 @@ class RebrandingToolApp:
             )
             self.style.map(
                 style_name,
-                background=[("disabled", "#b9c2cc"), ("pressed", pressed), ("active", hover)],
+                background=[("disabled", "#b9c2cc"), ("pressed", pressed),
+                            ("active", hover)],
                 foreground=[("disabled", "#eeeeee"), ("active", "white")],
             )
 
-        # Senza colori espliciti la barra viene disegnata bianca su fondo
-        # bianco: tecnicamente funziona, ma è invisibile.
+        # Without explicit colours the bar is drawn white on a white trough:
+        # technically working, but invisible.
         self.style.configure(
             PROGRESS_STYLE,
             troughcolor="#e6e9ee",
             bordercolor="#c9d0d8",
-            background=SACE_BLUE,
-            lightcolor=SACE_BLUE,
-            darkcolor=SACE_BLUE,
+            background=BRAND_BLUE,
+            lightcolor=BRAND_BLUE,
+            darkcolor=BRAND_BLUE,
         )
 
         self.style.configure(
             "Outline.TButton",
             font=("Arial", 9),
-            foreground=SACE_BLUE,
+            foreground=BRAND_BLUE,
             padding=(10, 6),
         )
         self.style.map(
@@ -223,25 +231,25 @@ class RebrandingToolApp:
 
     @staticmethod
     def btn(kind: str) -> dict:
-        """Opzioni di stile per un pulsante ('primary', 'success', ..., 'outline')."""
+        """Style options for a button ('primary', 'success', ..., 'outline')."""
         if kind == "outline" or kind not in BUTTON_PALETTE:
             return {"style": "Outline.TButton"}
         return {"style": f"{kind.capitalize()}.TButton"}
 
     # ------------------------------------------------------------------
-    # Aggiornamento UI thread-safe
+    # Thread-safe UI updates
     # ------------------------------------------------------------------
 
     def _ui(self, fn):
-        """Accoda una callable da eseguire nel thread principale."""
+        """Queue a callable to run on the main thread."""
         with self._ui_lock:
             self._ui_queue.append(fn)
 
     def _set_progress(self, value: float, text: str | None = None):
         """
-        Registra un avanzamento. Gli aggiornamenti sono accorpati e applicati
-        una volta per tick: su decine di migliaia di file, accodare una
-        callback per elemento saturerebbe la coda e bloccherebbe la UI.
+        Record progress. Updates are coalesced and applied once per tick: over
+        tens of thousands of files, queueing one callback per item would
+        saturate the queue and freeze the UI.
         """
         self._pending_progress = (value, text or "")
 
@@ -256,9 +264,9 @@ class RebrandingToolApp:
             try:
                 fn()
             except tk.TclError:
-                return  # finestra distrutta durante l'elaborazione
+                return  # window destroyed while processing
             except Exception as exc:
-                self.logger.error("Errore aggiornamento UI: %s", exc)
+                self.logger.error("UI update error: %s", exc)
 
         if self._pending_progress is not None:
             value, text = self._pending_progress
@@ -270,8 +278,8 @@ class RebrandingToolApp:
             except tk.TclError:
                 return
 
-        # L'id serve per annullare il tick alla chiusura: un after() pendente
-        # su un interprete distrutto produce un errore Tcl in background.
+        # The id lets us cancel the tick on shutdown: a pending after() on a
+        # destroyed interpreter raises a background Tcl error.
         self._pump_after_id = self.root.after(80, self._pump_ui_queue)
 
     # ------------------------------------------------------------------
@@ -281,6 +289,7 @@ class RebrandingToolApp:
     def log(self, message: str, level: int = logging.INFO):
         self.logger.log(level, message)
         entry = f"[{datetime.datetime.now():%H:%M:%S}] {message}"
+        self._log_buffer.append(entry)
         self._ui(lambda e=entry: self._append_log(e))
 
     def _append_log(self, entry: str):
@@ -291,17 +300,26 @@ class RebrandingToolApp:
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 
+    def _restore_log(self):
+        """Repopulate the log widget from the buffer after a UI rebuild."""
+        if not self._log_buffer or not hasattr(self, "log_text"):
+            return
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.insert(tk.END, "\n".join(self._log_buffer) + "\n")
+        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)
+
     def _status(self, msg: str):
         self._ui(lambda m=msg: self.status_label.config(text=m))
 
     # ------------------------------------------------------------------
-    # Creazione widget
+    # Widget creation
     # ------------------------------------------------------------------
 
     def _create_widgets(self):
-        # La barra di stato va impacchettata *prima* del notebook: in Tk chi
-        # viene prima si riserva lo spazio, e un notebook con expand=True
-        # schiaccerebbe la barra fino a tagliarne progressbar e pulsante.
+        # The status bar must be packed *before* the notebook: in Tk whatever
+        # comes first reserves its space, and a notebook with expand=True would
+        # squeeze the bar until its progressbar and button are clipped.
         self._build_status_bar()
 
         self.notebook = ttk.Notebook(self.root)
@@ -309,22 +327,22 @@ class RebrandingToolApp:
 
         ttk.Label(
             self.root,
-            text=f"VERSIONE {APP_VERSION} - ©{APP_COMPANY}",
+            text=t("VERSION {version}").format(version=APP_VERSION),
             font=("Arial", 8),
             foreground="#888888",
         ).place(relx=1.0, y=10, anchor=tk.NE, x=-12)
 
         self._frame_config = ttk.Frame(self.notebook)
-        self.notebook.add(self._frame_config, text="  ① CONFIGURAZIONE  ")
+        self.notebook.add(self._frame_config, text=t("  ① CONFIGURATION  "))
 
         self._frame_scan = ttk.Frame(self.notebook)
-        self.notebook.add(self._frame_scan, text="  ② RISULTATI SCANSIONE  ")
+        self.notebook.add(self._frame_scan, text=t("  ② SCAN RESULTS  "))
 
         self._frame_match = ttk.Frame(self.notebook)
-        self.notebook.add(self._frame_match, text="  ③ CORRISPONDENZE  ")
+        self.notebook.add(self._frame_match, text=t("  ③ MATCHES  "))
 
         self._frame_replace = ttk.Frame(self.notebook)
-        self.notebook.add(self._frame_replace, text="  ④ SOSTITUZIONE  ")
+        self.notebook.add(self._frame_replace, text=t("  ④ REPLACEMENT  "))
 
         self._build_config_tab(self._frame_config)
         self._build_scan_tab(self._frame_scan)
@@ -337,17 +355,17 @@ class RebrandingToolApp:
         status_bar = ttk.Frame(self.root, relief=tk.SUNKEN)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=8, pady=(0, 6))
 
-        self.status_label = ttk.Label(status_bar, text="Pronto", anchor=tk.W)
+        self.status_label = ttk.Label(status_bar, text=t("Ready"), anchor=tk.W)
         self.status_label.pack(side=tk.LEFT, padx=6)
 
         self._btn_cancel = ttk.Button(
-            status_bar, text="Annulla", width=10,
+            status_bar, text=t("Cancel"), width=10,
             command=self._request_cancel, state=tk.DISABLED, **self.btn("outline"),
         )
         self._btn_cancel.pack(side=tk.RIGHT, padx=6, pady=2)
 
-        # La progressbar esisteva solo come variabile: senza widget associato
-        # l'avanzamento non era visibile da nessuna parte.
+        # The progressbar used to exist only as a variable: with no widget
+        # bound to it, progress was not visible anywhere.
         self._progress = ttk.Progressbar(
             status_bar, variable=self.progress_var, maximum=100,
             length=240, mode="determinate", style=PROGRESS_STYLE,
@@ -355,64 +373,83 @@ class RebrandingToolApp:
         self._progress.pack(side=tk.RIGHT, padx=6, pady=2)
 
     # ------------------------------------------------------------------
-    # TAB 1 - CONFIGURAZIONE
+    # TAB 1 - CONFIGURATION
     # ------------------------------------------------------------------
 
     def _build_config_tab(self, parent: ttk.Frame):
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
-        ttk.Label(top, text="Configurazione Ricerca",
+        ttk.Label(top, text=t("Search Configuration"),
                   font=("Arial", 13, "bold")).pack(side=tk.LEFT, padx=16)
+
+        # Language picker: kept next to the title so it is discoverable
+        # without hunting through a settings dialog.
+        lang_box = ttk.Frame(top)
+        lang_box.pack(side=tk.RIGHT, padx=16)
+        ttk.Label(lang_box, text=t("Language:"), font=("Arial", 9)).pack(side=tk.LEFT,
+                                                                        padx=(0, 4))
+        self._language_combo = ttk.Combobox(
+            lang_box, textvariable=self._language_var, state="readonly",
+            values=list(i18n.LANGUAGES.values()), width=12,
+        )
+        self._language_combo.pack(side=tk.LEFT)
+        self._language_combo.bind("<<ComboboxSelected>>", self._on_language_selected)
 
         ttk.Label(
             parent,
-            text="Imposta le cartelle e la chiave di ricerca, poi avvia la scansione.",
+            text=t("Set the folders and the search key, then start the scan."),
             font=("Arial", 10), foreground="#666666",
         ).pack(anchor=tk.W, padx=24, pady=(0, 16))
 
-        # --- Cartella sorgente ---
-        src_frame = ttk.LabelFrame(parent, text=" CARTELLA SORGENTE (nuovi loghi) ")
+        # --- Source folder ---
+        src_frame = ttk.LabelFrame(parent, text=t(" SOURCE FOLDER (new logos) "))
         src_frame.pack(fill=tk.X, padx=24, pady=6)
         ttk.Label(
             src_frame,
-            text="Cartella contenente i nuovi file logo (sorgente della sostituzione):",
+            text=t("Folder holding the new logo files (the replacement source):"),
             font=("Arial", 9), foreground="#555555",
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(8, 2))
-        ttk.Label(src_frame, text="Percorso:").grid(row=1, column=0, sticky=tk.W, padx=8, pady=4)
-        self._entry_source = ttk.Entry(src_frame, textvariable=self.source_folder, width=68)
+        ttk.Label(src_frame, text=t("Path:")).grid(row=1, column=0, sticky=tk.W,
+                                                   padx=8, pady=4)
+        self._entry_source = ttk.Entry(src_frame, textvariable=self.source_folder,
+                                       width=68)
         self._entry_source.grid(row=1, column=1, padx=4, pady=4, sticky=tk.EW)
-        ttk.Button(src_frame, text="Sfoglia...", command=self._browse_source_folder,
+        ttk.Button(src_frame, text=t("Browse..."), command=self._browse_source_folder,
                    **self.btn("outline")).grid(row=1, column=2, padx=8, pady=4)
         src_frame.columnconfigure(1, weight=1)
 
-        # --- Cartella da scansionare ---
-        scan_frame = ttk.LabelFrame(parent, text=" CARTELLA DA SCANSIONARE ")
+        # --- Folder to scan ---
+        scan_frame = ttk.LabelFrame(parent, text=t(" FOLDER TO SCAN "))
         scan_frame.pack(fill=tk.X, padx=24, pady=6)
         ttk.Label(
             scan_frame,
-            text="Cartella (e sottocartelle) dove cercare i file da sostituire "
-                 "(es. server, share di rete):",
+            text=t("Folder (and subfolders) to search for the files to replace "
+                   "(e.g. a server or network share):"),
             font=("Arial", 9), foreground="#555555",
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(8, 2))
-        ttk.Label(scan_frame, text="Percorso:").grid(row=1, column=0, sticky=tk.W, padx=8, pady=4)
+        ttk.Label(scan_frame, text=t("Path:")).grid(row=1, column=0, sticky=tk.W,
+                                                    padx=8, pady=4)
         self._entry_scan = ttk.Entry(scan_frame, textvariable=self.scan_folder, width=68)
         self._entry_scan.grid(row=1, column=1, padx=4, pady=4, sticky=tk.EW)
-        ttk.Button(scan_frame, text="Sfoglia...", command=self._browse_scan_folder,
+        ttk.Button(scan_frame, text=t("Browse..."), command=self._browse_scan_folder,
                    **self.btn("outline")).grid(row=1, column=2, padx=8, pady=4)
         scan_frame.columnconfigure(1, weight=1)
 
-        # --- Chiave di ricerca ---
-        key_frame = ttk.LabelFrame(parent, text=" CHIAVE DI RICERCA ")
+        # --- Search key ---
+        key_frame = ttk.LabelFrame(parent, text=t(" SEARCH KEY "))
         key_frame.pack(fill=tk.X, padx=24, pady=6)
         ttk.Label(
             key_frame,
-            text="Pattern con wildcard (* = più caratteri, ? = un carattere). "
-                 "Più pattern separati da «;».\n"
-                 "Esempi: logo*.png  |  banner_*.jpg  |  icon_??.svg  |  logo*.png; logo*.svg",
+            text=t("Wildcard pattern (* = many characters, ? = one character). "
+                   "Separate multiple patterns with «;».\n"
+                   "Examples: logo*.png  |  banner_*.jpg  |  icon_??.svg  |  "
+                   "logo*.png; logo*.svg"),
             font=("Arial", 9), foreground="#555555", justify=tk.LEFT,
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(8, 2))
-        ttk.Label(key_frame, text="Pattern:").grid(row=1, column=0, sticky=tk.W, padx=8, pady=4)
-        self._entry_pattern = ttk.Entry(key_frame, textvariable=self.search_pattern, width=40)
+        ttk.Label(key_frame, text=t("Pattern:")).grid(row=1, column=0, sticky=tk.W,
+                                                      padx=8, pady=4)
+        self._entry_pattern = ttk.Entry(key_frame, textvariable=self.search_pattern,
+                                        width=40)
         self._entry_pattern.grid(row=1, column=1, padx=4, pady=4, sticky=tk.W)
         self._entry_pattern.bind("<Return>", lambda _e: self._start_scan())
         key_frame.columnconfigure(1, weight=1)
@@ -422,71 +459,69 @@ class RebrandingToolApp:
             warn.pack(fill=tk.X, padx=24, pady=4)
             ttk.Label(
                 warn,
-                text="⚠️  Pillow (PIL) non installato: anteprime e risoluzioni non "
-                     "saranno disponibili. Installa con: pip install pillow",
+                text=t("⚠️  Pillow (PIL) is not installed: previews and resolutions "
+                       "will be unavailable. Install it with: pip install pillow"),
                 font=("Arial", 9), foreground="#cc6600",
             ).pack(anchor=tk.W)
 
-        # --- Pulsanti ---
+        # --- Buttons ---
         btn_frame = ttk.Frame(parent)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=24, pady=20)
 
         self._btn_scan = ttk.Button(
-            btn_frame, text="🔍  AVVIA SCANSIONE", command=self._start_scan,
+            btn_frame, text=t("🔍  START SCAN"), command=self._start_scan,
             width=26, **self.btn("success"),
         )
         self._btn_scan.pack(side=tk.RIGHT, padx=4)
 
-        ttk.Button(btn_frame, text="Pulisci campi", command=self._clear_fields,
+        ttk.Button(btn_frame, text=t("Clear fields"), command=self._clear_fields,
                    **self.btn("outline")).pack(side=tk.RIGHT, padx=4)
 
-        ttk.Button(btn_frame, text="Apri cartella log", command=self._open_log_folder,
+        ttk.Button(btn_frame, text=t("Open log folder"), command=self._open_log_folder,
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
 
-        # --- Banner ---
-        banner_container = ttk.Frame(parent)
-        banner_container.pack(fill=tk.BOTH, expand=True, padx=24, pady=10)
-        self._load_banner(banner_container)
+        # --- Workflow reminder, filling the space below the fields ---
+        self._build_workflow_panel(parent)
 
-    def _load_banner(self, container: ttk.Frame):
-        if not PIL_AVAILABLE:
-            return
-        banner_path = core.resource_path("banner.jpg")
-        if not os.path.exists(banner_path):
-            self.log(f"banner.jpg non trovato in {banner_path}", logging.WARNING)
-            return
-        try:
-            with Image.open(banner_path) as img:
-                ratio = min(900 / img.width, 300 / img.height, 1.0)
-                if ratio < 1:
-                    img = img.resize(
-                        (int(img.width * ratio), int(img.height * ratio)),
-                        Image.Resampling.LANCZOS,
-                    )
-                photo = ImageTk.PhotoImage(img)
-            self._banner_ref = photo  # anti garbage collection
-            label = ttk.Label(container, image=photo)
-            label.image = photo
-            label.pack(expand=True)
-        except Exception as exc:
-            self.log(f"Errore caricamento banner.jpg: {exc}", logging.ERROR)
+    def _build_workflow_panel(self, parent: ttk.Frame):
+        """Short recap of the four steps, shown on the configuration tab."""
+        container = ttk.Frame(parent)
+        container.pack(fill=tk.BOTH, expand=True, padx=24, pady=10)
+
+        panel = ttk.LabelFrame(container, text=t(" HOW IT WORKS "))
+        panel.pack(fill=tk.X, anchor=tk.N)
+
+        steps = (
+            t("①  Configuration — choose the folder with the new logos, the "
+              "folder to\n     scan, and a search pattern such as logo*.png."),
+            t("②  Scan results — check which files were found before going "
+              "further."),
+            t("③  Matches — review every proposed pairing; exclude or override "
+              "any of them."),
+            t("④  Replacement — run it, with a backup or as a dry run first."),
+        )
+        for step in steps:
+            ttk.Label(panel, text=step, font=("Arial", 9), foreground="#555555",
+                      justify=tk.LEFT).pack(anchor=tk.W, padx=12, pady=3)
+        ttk.Frame(panel).pack(pady=4)
 
     # ------------------------------------------------------------------
-    # TAB 2 - RISULTATI SCANSIONE
+    # TAB 2 - SCAN RESULTS
     # ------------------------------------------------------------------
 
     def _build_scan_tab(self, parent: ttk.Frame):
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
-        ttk.Label(top, text="Risultati Scansione", font=("Arial", 13, "bold")).pack(side=tk.LEFT)
-        self._scan_count_lbl = ttk.Label(top, text="Nessuna scansione effettuata",
+        ttk.Label(top, text=t("Scan Results"),
+                  font=("Arial", 13, "bold")).pack(side=tk.LEFT)
+        self._scan_count_lbl = ttk.Label(top, text=t("No scan performed yet"),
                                          foreground="#888888")
         self._scan_count_lbl.pack(side=tk.RIGHT, padx=8)
 
         ttk.Label(
             parent,
-            text="Controlla i file individuati, poi avvia l'analisi delle corrispondenze. "
-                 "Doppio clic su una riga per aprire la cartella che la contiene.",
+            text=t("Review the files found, then start the match analysis. "
+                   "Double-click a row to open its containing folder."),
             font=("Arial", 10), foreground="#666666",
         ).pack(anchor=tk.W, padx=8, pady=(0, 10))
 
@@ -498,11 +533,11 @@ class RebrandingToolApp:
                                        height=12, selectmode="extended")
         headers = {
             "#":    ("#", 46),
-            "name": ("Nome File", 180),
-            "ext":  ("Formato", 70),
-            "size": ("Dimensione", 100),
-            "dim":  ("Risoluzione", 120),
-            "path": ("Percorso Completo", 460),
+            "name": (t("File Name"), 180),
+            "ext":  (t("Format"), 70),
+            "size": (t("Size"), 100),
+            "dim":  (t("Resolution"), 120),
+            "path": (t("Full Path"), 460),
         }
         for col, (label, width) in headers.items():
             self._scan_tree.heading(
@@ -512,7 +547,8 @@ class RebrandingToolApp:
             self._scan_tree.column(col, width=width, minwidth=60)
 
         vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self._scan_tree.yview)
-        hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self._scan_tree.xview)
+        hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL,
+                            command=self._scan_tree.xview)
         self._scan_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         self._scan_tree.grid(row=0, column=0, sticky=tk.NSEW)
         vsb.grid(row=0, column=1, sticky=tk.NS)
@@ -523,45 +559,48 @@ class RebrandingToolApp:
         self._scan_tree.bind("<<TreeviewSelect>>", self._on_scan_select)
         self._scan_tree.bind("<Double-1>", self._on_scan_double_click)
 
-        preview_outer = ttk.LabelFrame(parent, text=" Anteprima ")
+        preview_outer = ttk.LabelFrame(parent, text=t(" Preview "))
         preview_outer.pack(fill=tk.X, padx=8, pady=4)
-        self._preview_canvas = tk.Canvas(preview_outer, width=120, height=90, bg="#f5f5f5",
-                                         highlightthickness=1, highlightbackground="#cccccc")
+        self._preview_canvas = tk.Canvas(preview_outer, width=120, height=90,
+                                         bg="#f5f5f5", highlightthickness=1,
+                                         highlightbackground="#cccccc")
         self._preview_canvas.pack(side=tk.LEFT, padx=8, pady=6)
-        self._preview_info = ttk.Label(preview_outer, text="Seleziona un file per l'anteprima",
-                                       font=("Arial", 9), foreground="#888888", justify=tk.LEFT)
+        self._preview_info = ttk.Label(preview_outer, text=t("Select a file to preview it"),
+                                       font=("Arial", 9), foreground="#888888",
+                                       justify=tk.LEFT)
         self._preview_info.pack(side=tk.LEFT, padx=12, pady=6, anchor=tk.W)
 
         btn_frame = ttk.Frame(parent)
         btn_frame.pack(fill=tk.X, padx=8, pady=8)
 
         self._btn_match = ttk.Button(
-            btn_frame, text="🔗  TROVA CORRISPONDENZE", command=self._start_matching,
+            btn_frame, text=t("🔗  FIND MATCHES"), command=self._start_matching,
             width=32, **self.btn("primary"),
         )
         self._btn_match.pack(side=tk.RIGHT, padx=4)
 
-        ttk.Button(btn_frame, text="← Torna alla Configurazione",
+        ttk.Button(btn_frame, text=t("← Back to Configuration"),
                    command=lambda: self.notebook.select(0),
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
 
     # ------------------------------------------------------------------
-    # TAB 3 - CORRISPONDENZE
+    # TAB 3 - MATCHES
     # ------------------------------------------------------------------
 
     def _build_match_tab(self, parent: ttk.Frame):
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
-        ttk.Label(top, text="Corrispondenze Proposte", font=("Arial", 13, "bold")).pack(side=tk.LEFT)
+        ttk.Label(top, text=t("Proposed Matches"),
+                  font=("Arial", 13, "bold")).pack(side=tk.LEFT)
         self._match_count_lbl = ttk.Label(top, text="", foreground="#888888")
         self._match_count_lbl.pack(side=tk.RIGHT, padx=8)
 
         ttk.Label(
             parent,
-            text="Ogni file trovato viene abbinato al sorgente più idoneo (stesso formato, "
-                 "risoluzione più simile, nome più affine).\n"
-                 "Clic sulla colonna ✓ o barra spaziatrice per includere/escludere una riga; "
-                 "doppio clic per scegliere un sorgente diverso.",
+            text=t("Each file found is paired with the most suitable source "
+                   "(same format, closest resolution, most similar name).\n"
+                   "Click the ✓ column or press space to include/exclude a row; "
+                   "double-click to pick a different source."),
             font=("Arial", 9), foreground="#555555", justify=tk.LEFT,
         ).pack(anchor=tk.W, padx=8, pady=(0, 6))
 
@@ -575,13 +614,13 @@ class RebrandingToolApp:
         headers = {
             "#":           ("#", 46),
             "chk":         ("✓", 34),
-            "target_name": ("File da Sostituire", 185),
-            "target_fmt":  ("Formato", 70),
-            "target_dim":  ("Risoluzione Target", 130),
-            "src_name":    ("Nuovo File Sorgente", 185),
-            "src_dim":     ("Risoluzione Sorgente", 130),
-            "quality":     ("Qualità", 80),
-            "target_path": ("Percorso Target", 340),
+            "target_name": (t("File to Replace"), 185),
+            "target_fmt":  (t("Format"), 70),
+            "target_dim":  (t("Target Resolution"), 130),
+            "src_name":    (t("New Source File"), 185),
+            "src_dim":     (t("Source Resolution"), 130),
+            "quality":     (t("Quality"), 80),
+            "target_path": (t("Target Path"), 340),
         }
         for col, (label, width) in headers.items():
             self._match_tree.heading(
@@ -604,9 +643,9 @@ class RebrandingToolApp:
         self._match_tree.tag_configure("disabled", foreground="#aaaaaa")
         self._match_tree.tag_configure("weak", foreground="#b06a00")
 
-        # Il toggle scatta solo sulla colonna ✓ (o con la barra spaziatrice):
-        # prima qualunque clic invertiva la riga, rendendo impossibile
-        # selezionarla per vederne l'anteprima senza modificarla.
+        # The toggle only fires on the ✓ column (or with the space bar):
+        # previously any click inverted the row, making it impossible to select
+        # one just to look at its preview.
         self._match_tree.bind("<Button-1>", self._on_match_click)
         self._match_tree.bind("<Double-1>", self._on_match_double_click)
         self._match_tree.bind("<space>", self._on_match_space)
@@ -615,70 +654,72 @@ class RebrandingToolApp:
         preview_outer = ttk.Frame(parent)
         preview_outer.pack(fill=tk.X, padx=8, pady=4)
 
-        target_box = ttk.LabelFrame(preview_outer, text=" Logo Originale ")
+        target_box = ttk.LabelFrame(preview_outer, text=t(" Original Logo "))
         target_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
         self._target_canvas = tk.Canvas(target_box, width=90, height=70, bg="#f5f5f5",
                                         highlightthickness=1)
         self._target_canvas.pack(side=tk.LEFT, padx=6, pady=4)
-        self._target_preview_info = ttk.Label(target_box, text="Seleziona una riga",
+        self._target_preview_info = ttk.Label(target_box, text=t("Select a row"),
                                               font=("Arial", 8), justify=tk.LEFT)
         self._target_preview_info.pack(side=tk.LEFT, padx=6, pady=4, anchor=tk.W)
 
         ttk.Label(preview_outer, text="➜", font=("Arial", 20),
-                  foreground=SACE_BLUE).pack(side=tk.LEFT, padx=4)
+                  foreground=BRAND_BLUE).pack(side=tk.LEFT, padx=4)
 
-        src_box = ttk.LabelFrame(preview_outer, text=" Nuovo Logo Proposto ")
+        src_box = ttk.LabelFrame(preview_outer, text=t(" Proposed New Logo "))
         src_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
         self._src_canvas = tk.Canvas(src_box, width=90, height=70, bg="#f5f5f5",
                                      highlightthickness=1)
         self._src_canvas.pack(side=tk.LEFT, padx=6, pady=4)
-        self._src_preview_info = ttk.Label(src_box, text="Seleziona una riga",
+        self._src_preview_info = ttk.Label(src_box, text=t("Select a row"),
                                            font=("Arial", 8), justify=tk.LEFT)
         self._src_preview_info.pack(side=tk.LEFT, padx=6, pady=4, anchor=tk.W)
 
         leg = ttk.Frame(parent)
         leg.pack(fill=tk.X, padx=8, pady=2)
-        ttk.Label(leg, text="✓ = incluso   ✗ = escluso   rosso = nessuna corrispondenza   "
-                            "arancio = abbinamento debole, da verificare",
+        ttk.Label(leg, text=t("✓ = included   ✗ = excluded   red = no match   "
+                              "orange = weak match, worth checking"),
                   font=("Arial", 8), foreground="#888888").pack(side=tk.LEFT)
 
         btn_f = ttk.Frame(parent)
         btn_f.pack(fill=tk.X, padx=8, pady=8)
 
-        ttk.Button(btn_f, text="Seleziona tutto", command=self._select_all_matches,
+        ttk.Button(btn_f, text=t("Select all"), command=self._select_all_matches,
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(btn_f, text="Deseleziona tutto", command=self._deselect_all_matches,
+        ttk.Button(btn_f, text=t("Deselect all"), command=self._deselect_all_matches,
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(btn_f, text="Esporta CSV", command=self._export_matches,
+        ttk.Button(btn_f, text=t("Export CSV"), command=self._export_matches,
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
 
-        ttk.Button(btn_f, text="✅  PROCEDI CON LA SOSTITUZIONE", command=self._go_to_replace,
+        ttk.Button(btn_f, text=t("✅  PROCEED WITH REPLACEMENT"),
+                   command=self._go_to_replace,
                    width=34, **self.btn("warning")).pack(side=tk.RIGHT, padx=4)
-        ttk.Button(btn_f, text="← Torna ai Risultati", command=lambda: self.notebook.select(1),
+        ttk.Button(btn_f, text=t("← Back to Results"),
+                   command=lambda: self.notebook.select(1),
                    **self.btn("outline")).pack(side=tk.RIGHT, padx=4)
 
     # ------------------------------------------------------------------
-    # TAB 4 - SOSTITUZIONE
+    # TAB 4 - REPLACEMENT
     # ------------------------------------------------------------------
 
     def _build_replace_tab(self, parent: ttk.Frame):
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
-        ttk.Label(top, text="Sostituzione File",
+        ttk.Label(top, text=t("File Replacement"),
                   font=("Arial", 13, "bold")).pack(side=tk.LEFT, padx=16)
 
         ttk.Label(
             parent,
-            text="I file selezionati nel tab precedente verranno sovrascritti con i "
-                 "corrispondenti file sorgente.\n"
-                 "Con il backup attivo l'operazione è reversibile dal pulsante "
-                 "«Ripristina backup».",
+            text=t("The files selected in the previous tab will be overwritten "
+                   "with their matching source files.\n"
+                   "With backup enabled the operation can be undone from "
+                   "«Restore backups»."),
             font=("Arial", 10), foreground="#666666",
         ).pack(anchor=tk.W, padx=24, pady=(0, 14))
 
-        summary = ttk.LabelFrame(parent, text=" Riepilogo operazione ")
+        summary = ttk.LabelFrame(parent, text=t(" Operation summary "))
         summary.pack(fill=tk.X, padx=24, pady=6)
-        self._replace_summary_lbl = ttk.Label(summary, text="Nessuna operazione in attesa.",
+        self._replace_summary_lbl = ttk.Label(summary, text=t("No operation pending."),
                                               font=("Arial", 10), justify=tk.LEFT)
         self._replace_summary_lbl.pack(padx=12, pady=10, anchor=tk.W)
 
@@ -686,16 +727,16 @@ class RebrandingToolApp:
         opts.pack(fill=tk.X, padx=24, pady=4)
         ttk.Checkbutton(
             opts,
-            text="Crea backup dei file originali prima di sovrascrivere (suffisso .bak)",
+            text=t("Back up the original files before overwriting (.bak suffix)"),
             variable=self._backup_var, command=self._refresh_replace_summary,
         ).pack(anchor=tk.W)
         ttk.Checkbutton(
             opts,
-            text="Simulazione (dry-run): esegue tutti i controlli senza modificare alcun file",
+            text=t("Dry run: performs every check without modifying any file"),
             variable=self._dry_run_var, command=self._refresh_replace_summary,
         ).pack(anchor=tk.W)
 
-        log_frame = ttk.LabelFrame(parent, text=" Log operazioni ")
+        log_frame = ttk.LabelFrame(parent, text=t(" Operation log "))
         log_frame.pack(fill=tk.BOTH, expand=True, padx=24, pady=6)
         self.log_text = tk.Text(log_frame, height=12, wrap=tk.WORD, font=("Courier", 9),
                                 state=tk.DISABLED, bg="#fafafa")
@@ -708,34 +749,91 @@ class RebrandingToolApp:
         btn_frame.pack(fill=tk.X, padx=24, pady=10)
 
         self._btn_execute = ttk.Button(
-            btn_frame, text="⚡  ESEGUI SOSTITUZIONE", command=self._execute_replacement,
+            btn_frame, text=t("⚡  RUN REPLACEMENT"), command=self._execute_replacement,
             width=28, **self.btn("danger"),
         )
         self._btn_execute.pack(side=tk.RIGHT, padx=4)
 
-        ttk.Button(btn_frame, text="← Torna alle Corrispondenze",
+        ttk.Button(btn_frame, text=t("← Back to Matches"),
                    command=lambda: self.notebook.select(2),
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(btn_frame, text="Pulisci log", command=self._clear_log,
+        ttk.Button(btn_frame, text=t("Clear log"), command=self._clear_log,
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
         self._btn_restore = ttk.Button(
-            btn_frame, text="↩  Ripristina backup", command=self._restore_backups,
+            btn_frame, text=t("↩  Restore backups"), command=self._restore_backups,
             **self.btn("outline"),
         )
         self._btn_restore.pack(side=tk.LEFT, padx=4)
 
     # ------------------------------------------------------------------
-    # Gestione operazioni in background
+    # Language
+    # ------------------------------------------------------------------
+
+    def _on_language_selected(self, _event=None):
+        self._change_language(i18n.code_for_name(self._language_var.get()))
+
+    def _change_language(self, code: str):
+        """Switch language and rebuild the interface in place."""
+        if code == i18n.get_language():
+            return
+        if self._busy():
+            # Rebuilding while a worker is publishing updates would destroy the
+            # widgets its queued callbacks are about to touch.
+            messagebox.showinfo(t("Operation in progress"),
+                                t("Wait for the current operation to finish."))
+            self._language_var.set(i18n.language_name(i18n.get_language()))
+            return
+
+        i18n.set_language(code)
+        self._save_settings()
+        self._rebuild_ui()
+        self.log(t("Language changed to {language}.").format(
+            language=i18n.language_name(code)))
+
+    def _rebuild_ui(self):
+        """
+        Recreate every widget in the newly selected language.
+
+        Rebuilding is preferred over updating each label one by one: the tables
+        and previews are repopulated from the data already in memory, so there
+        is a single code path producing the interface and no risk of a label
+        being forgotten.
+        """
+        current_tab = 0
+        try:
+            current_tab = self.notebook.index("current")
+        except tk.TclError:
+            pass
+
+        self._release_images()
+        for child in list(self.root.winfo_children()):
+            child.destroy()
+
+        self._create_widgets()
+        self._restore_log()
+
+        if self.scanned_files:
+            self._populate_scan_tree(announce=False)
+        if self.matches:
+            self._populate_match_tree()
+
+        try:
+            self.notebook.select(current_tab)
+        except tk.TclError:
+            pass
+
+    # ------------------------------------------------------------------
+    # Background operations
     # ------------------------------------------------------------------
 
     def _busy(self) -> bool:
         return self._worker is not None and self._worker.is_alive()
 
-    def _start_worker(self, target, args=(), status: str = "Operazione in corso..."):
-        """Avvia un'operazione lunga, impedendo esecuzioni concorrenti."""
+    def _start_worker(self, target, args=(), status: str = ""):
+        """Start a long operation, preventing concurrent runs."""
         if self._busy():
-            messagebox.showinfo("Operazione in corso",
-                                "Attendi il completamento dell'operazione corrente.")
+            messagebox.showinfo(t("Operation in progress"),
+                                t("Wait for the current operation to finish."))
             return False
 
         self._cancel_event.clear()
@@ -744,15 +842,15 @@ class RebrandingToolApp:
         self.progress_var.set(0)
         self._status(status)
 
-        # Svuota qui, nel thread principale, la spazzatura ciclica ancora in
-        # attesa, poi sospende il collector finché il worker è in esecuzione.
+        # Flush any pending cyclic garbage here, on the main thread, then pause
+        # the collector while the worker runs.
         #
-        # Il distruttore di una miniatura Tk chiama l'interprete Tcl. Se il
-        # collector la finalizza mentre gira su un thread di lavoro (può
-        # scattare a ogni allocazione, ovunque), quella chiamata arriva da
-        # fuori dal thread principale e blocca l'applicazione. Sospendendolo,
-        # le uniche finalizzazioni possibili restano quelle per conteggio dei
-        # riferimenti, che avvengono sul thread che rilascia l'oggetto.
+        # A Tk thumbnail's destructor calls into the Tcl interpreter. If the
+        # collector finalises one while running on a worker thread (it can fire
+        # on any allocation, anywhere), that call arrives from outside the main
+        # thread and freezes the application. With the collector paused, the
+        # only finalisations left are reference-counted ones, which happen on
+        # the thread that releases the object.
         gc.collect()
         gc.disable()
 
@@ -760,13 +858,13 @@ class RebrandingToolApp:
             try:
                 target(*args)
             except OperationCancelled:
-                self.log("Operazione annullata dall'utente.", logging.WARNING)
-                self._status("Operazione annullata.")
+                self.log(t("Operation cancelled by the user."), logging.WARNING)
+                self._status(t("Operation cancelled."))
             except Exception as exc:
-                self.logger.exception("Errore nell'operazione in background")
-                self.log(f"Errore: {exc}", logging.ERROR)
-                self._ui(lambda e=exc: messagebox.showerror("Errore", str(e)))
-                self._status("Operazione terminata con errore.")
+                self.logger.exception("Background operation failed")
+                self.log(t("Error: {error}").format(error=exc), logging.ERROR)
+                self._ui(lambda e=exc: messagebox.showerror(t("Error"), str(e)))
+                self._status(t("Operation failed with an error."))
             finally:
                 self._ui(self._worker_finished)
 
@@ -775,15 +873,16 @@ class RebrandingToolApp:
         return True
 
     def _worker_finished(self):
-        # Riprende il collector e recupera qui, nel thread principale, tutto
-        # ciò che si è accumulato durante l'operazione.
+        # Resume the collector and reclaim, here on the main thread, everything
+        # that accumulated during the operation.
         gc.enable()
         gc.collect()
         self._set_action_buttons(tk.NORMAL)
         self._btn_cancel.config(state=tk.DISABLED)
 
     def _set_action_buttons(self, state):
-        for btn in (self._btn_scan, self._btn_match, self._btn_execute, self._btn_restore):
+        for btn in (self._btn_scan, self._btn_match, self._btn_execute,
+                    self._btn_restore):
             try:
                 btn.config(state=state)
             except tk.TclError:
@@ -792,20 +891,20 @@ class RebrandingToolApp:
     def _request_cancel(self):
         if self._busy():
             self._cancel_event.set()
-            self._status("Annullamento in corso...")
+            self._status(t("Cancelling..."))
 
     def _on_close(self):
         if self._busy():
             if not messagebox.askyesno(
-                "Operazione in corso",
-                "Un'operazione è ancora in esecuzione.\nUscire comunque?",
+                t("Operation in progress"),
+                t("An operation is still running.\nQuit anyway?"),
             ):
                 return
             self._cancel_event.set()
 
         self._closing = True
         self._save_settings()
-        gc.enable()   # non lasciarlo sospeso se si esce durante un'operazione
+        gc.enable()   # never leave it paused if we exit mid-operation
 
         if self._pump_after_id is not None:
             try:
@@ -821,6 +920,7 @@ class RebrandingToolApp:
 
     def _save_settings(self):
         core.save_settings({
+            "language": i18n.get_language(),
             "source_folder": self.source_folder.get().strip(),
             "scan_folder": self.scan_folder.get().strip(),
             "search_pattern": self.search_pattern.get().strip(),
@@ -829,12 +929,12 @@ class RebrandingToolApp:
         })
 
     # ------------------------------------------------------------------
-    # Azioni: Configurazione
+    # Configuration actions
     # ------------------------------------------------------------------
 
     def _browse_source_folder(self):
         folder = filedialog.askdirectory(
-            title="Seleziona cartella sorgente (nuovi loghi)",
+            title=t("Select source folder (new logos)"),
             initialdir=self.source_folder.get() or None,
         )
         if folder:
@@ -842,7 +942,7 @@ class RebrandingToolApp:
 
     def _browse_scan_folder(self):
         folder = filedialog.askdirectory(
-            title="Seleziona cartella da scansionare",
+            title=t("Select folder to scan"),
             initialdir=self.scan_folder.get() or None,
         )
         if folder:
@@ -854,8 +954,7 @@ class RebrandingToolApp:
         self.search_pattern.set("logo*.png")
 
     def _open_log_folder(self):
-        folder = core.writable_app_dir("logs")
-        self._open_in_file_manager(folder)
+        self._open_in_file_manager(core.writable_app_dir("logs"))
 
     def _open_in_file_manager(self, path: str):
         try:
@@ -864,10 +963,14 @@ class RebrandingToolApp:
             else:
                 webbrowser.open(Path(path).as_uri())
         except Exception as exc:
-            messagebox.showinfo("Percorso", f"{path}\n\n(Apertura automatica non riuscita: {exc})")
+            messagebox.showinfo(
+                t("Path"),
+                t("{path}\n\n(Could not open it automatically: {error})").format(
+                    path=path, error=exc),
+            )
 
     # ------------------------------------------------------------------
-    # Azioni: Scansione
+    # Scan
     # ------------------------------------------------------------------
 
     def _start_scan(self):
@@ -877,11 +980,11 @@ class RebrandingToolApp:
 
         problems = core.validate_config(source, scan, pattern)
         if problems:
-            messagebox.showerror("Configurazione non valida", "\n\n".join(problems))
+            messagebox.showerror(t("Invalid configuration"), "\n\n".join(problems))
             return
 
         for warning in core.config_warnings(source, scan):
-            self.log(f"Avviso: {warning}", logging.WARNING)
+            self.log(t("Warning: {message}").format(message=warning), logging.WARNING)
 
         self._save_settings()
         self.scanned_files = []
@@ -891,31 +994,33 @@ class RebrandingToolApp:
         self._clear_tree(self._scan_tree)
         self._clear_tree(self._match_tree)
         self._clear_previews()
-        self._scan_count_lbl.config(text="Scansione in corso...")
+        self._scan_count_lbl.config(text=t("Scanning..."))
         self._match_count_lbl.config(text="")
         self.notebook.select(1)
 
         self._start_worker(self._scan_worker, (source, scan, pattern),
-                           "Scansione in corso...")
+                           t("Scanning..."))
 
     def _scan_worker(self, source: str, scan: str, pattern: str):
-        self.log(f"Scansione avviata — cartella: {scan} | pattern: {pattern}")
-        self.log(f"Cartella sorgente loghi: {source}")
+        self.log(t("Scan started — folder: {folder} | pattern: {pattern}").format(
+            folder=scan, pattern=pattern))
+        self.log(t("Source logo folder: {folder}").format(folder=source))
 
         def walk_error(path: str, exc: Exception):
-            self.log(f"  Accesso negato o errore su {path}: {exc}", logging.WARNING)
+            self.log(t("  Access denied or error on {path}: {error}").format(
+                path=path, error=exc), logging.WARNING)
 
         source_paths = core.collect_source_files(
             source, cancel_event=self._cancel_event, on_error=walk_error)
-        self.log(f"File sorgente trovati: {len(source_paths)}")
+        self.log(t("Source files found: {count}").format(count=len(source_paths)))
 
-        # La cartella sorgente, se annidata nella cartella scansionata, va
-        # esclusa: altrimenti i nuovi loghi verrebbero trattati come target.
+        # The source folder, when nested inside the scanned one, must be
+        # excluded: otherwise the new logos would be treated as targets.
         exclude = [source] if core.is_within(source, scan) else []
         found = core.scan_files(scan, pattern, exclude_dirs=exclude,
                                 cancel_event=self._cancel_event, on_error=walk_error)
         total = len(found)
-        self.log(f"File corrispondenti al pattern: {total}")
+        self.log(t("Files matching the pattern: {count}").format(count=total))
 
         source_files: list[FileInfo] = []
         for index, path in enumerate(source_paths, 1):
@@ -924,9 +1029,13 @@ class RebrandingToolApp:
             try:
                 source_files.append(FileInfo.from_path(path))
             except OSError as exc:
-                self.log(f"  Sorgente illeggibile {path}: {exc}", logging.WARNING)
-            self._set_progress(index / max(len(source_paths), 1) * 30,
-                               f"Lettura sorgenti... {index}/{len(source_paths)}")
+                self.log(t("  Unreadable source {path}: {error}").format(
+                    path=path, error=exc), logging.WARNING)
+            self._set_progress(
+                index / max(len(source_paths), 1) * 30,
+                t("Reading sources... {done}/{total}").format(
+                    done=index, total=len(source_paths)),
+            )
 
         scanned: list[FileInfo] = []
         for index, path in enumerate(found, 1):
@@ -935,35 +1044,44 @@ class RebrandingToolApp:
             try:
                 scanned.append(FileInfo.from_path(path))
             except OSError as exc:
-                self.log(f"  Errore su {path}: {exc}", logging.WARNING)
-            self._set_progress(30 + index / max(total, 1) * 70,
-                               f"Analisi file... {index}/{total}")
+                self.log(t("  Error on {path}: {error}").format(path=path, error=exc),
+                         logging.WARNING)
+            self._set_progress(
+                30 + index / max(total, 1) * 70,
+                t("Analysing files... {done}/{total}").format(done=index, total=total),
+            )
 
         self.source_files = source_files
         self.scanned_files = scanned
         self._ui(self._populate_scan_tree)
 
-    def _populate_scan_tree(self):
+    def _populate_scan_tree(self, announce: bool = True):
         self._clear_tree(self._scan_tree)
         for index, info in enumerate(self.scanned_files, 1):
             self._scan_tree.insert(
                 "", tk.END, iid=info.path,
-                values=(index, info.name, info.fmt, info.size_str, info.dim_str, info.path),
+                values=(index, info.name, info.fmt, info.size_str, info.dim_str,
+                        info.path),
             )
 
         count = len(self.scanned_files)
         self._scan_count_lbl.config(
-            text=f"{count} file trovati — {len(self.source_files)} sorgenti disponibili")
+            text=t("{count} files found — {sources} sources available").format(
+                count=count, sources=len(self.source_files)))
+
+        if not announce:
+            return
+
         self.progress_var.set(100)
-        self._status(f"Scansione completata: {count} file trovati.")
-        self.log(f"Scansione completata: {count} file, "
-                 f"{len(self.source_files)} sorgenti disponibili.")
+        self._status(t("Scan complete: {count} files found.").format(count=count))
+        self.log(t("Scan complete: {count} files, {sources} sources available.").format(
+            count=count, sources=len(self.source_files)))
 
         if count == 0:
             messagebox.showinfo(
-                "Nessun risultato",
-                "Nessun file corrisponde al pattern indicato.\n\n"
-                "Verifica il pattern (es. logo*.png) e la cartella da scansionare.",
+                t("No results"),
+                t("No file matches the given pattern.\n\n"
+                  "Check the pattern (e.g. logo*.png) and the folder to scan."),
             )
 
     def _on_scan_select(self, _event=None):
@@ -986,47 +1104,46 @@ class RebrandingToolApp:
             self._keep_image("scan", thumb)
             self._preview_canvas.create_image(60, 45, image=thumb, anchor=tk.CENTER)
         else:
-            self._preview_canvas.create_text(60, 45, text="N/D", fill="#aaaaaa",
+            self._preview_canvas.create_text(60, 45, text=t("N/A"), fill="#aaaaaa",
                                              font=("Arial", 11))
 
         self._preview_info.config(
-            text=(f"Nome: {info.name}\n"
-                  f"Formato: {info.fmt}\n"
-                  f"Dimensione: {info.size_str}\n"
-                  f"Risoluzione: {info.dim_str}\n"
-                  f"Percorso: {info.path}"),
+            text=t("Name: {name}\nFormat: {fmt}\nSize: {size}\n"
+                   "Resolution: {dim}\nPath: {path}").format(
+                name=info.name, fmt=info.fmt, size=info.size_str,
+                dim=info.dim_str, path=info.path),
             foreground="#333333",
         )
 
     def _keep_image(self, slot: str, photo):
         """
-        Trattiene una miniatura in un registro dell'applicazione.
+        Hold a thumbnail in an application-owned registry.
 
-        Il distruttore di `ImageTk.PhotoImage` chiama Tk per liberare
-        l'immagine. Se l'oggetto finisce nella spazzatura ciclica, il garbage
-        collector può eseguirne il finalizzatore su un thread qualsiasi:
-        quando capita su un thread di lavoro, la chiamata a Tk da fuori dal
-        thread principale blocca l'interprete e l'applicazione si pianta.
+        `ImageTk.PhotoImage.__del__` calls Tk to free the image. If the object
+        ends up in cyclic garbage, the collector may run its finaliser on any
+        thread: when that happens on a worker thread, the call into Tk from
+        outside the main thread blocks the interpreter and the application
+        hangs.
 
-        Tenendo un riferimento forte qui le miniature restano raggiungibili e
-        non diventano mai spazzatura; vengono rilasciate esplicitamente da
-        `_release_images`, che gira nel thread principale.
+        Keeping a strong reference here means thumbnails stay reachable and
+        never become garbage; they are released explicitly by
+        `_release_images`, which runs on the main thread.
         """
         self._image_refs[slot] = photo
         return photo
 
     def _release_images(self):
-        """Libera le miniature. Da chiamare solo dal thread principale."""
+        """Release the thumbnails. Main thread only."""
         self._image_refs.clear()
-        # Raccoglie subito, qui e ora, gli eventuali cicli rimasti: così i
-        # finalizzatori girano su questo thread e non su un worker.
+        # Collect any remaining cycles right here and now, so the finalisers
+        # run on this thread and not on a worker.
         gc.collect()
 
     @staticmethod
     def _make_thumbnail(filepath: str, size):
         """
-        Miniatura per l'anteprima. Il file viene chiuso subito: tenerlo aperto
-        impedirebbe di sovrascriverlo su Windows.
+        Thumbnail for the preview. The file is closed immediately: keeping it
+        open would prevent overwriting it on Windows.
         """
         if not PIL_AVAILABLE:
             return None
@@ -1040,34 +1157,37 @@ class RebrandingToolApp:
             return None
 
     # ------------------------------------------------------------------
-    # Azioni: Abbinamento
+    # Matching
     # ------------------------------------------------------------------
 
     def _start_matching(self):
         if not self.scanned_files:
-            messagebox.showwarning("Attenzione",
-                                   "Nessun file trovato nella scansione.\n"
-                                   "Esegui prima la scansione.")
+            messagebox.showwarning(
+                t("Warning"),
+                t("No file found in the scan.\nRun the scan first."))
             return
         if not self.source_files:
-            messagebox.showwarning("Attenzione",
-                                   "Nessun file immagine nella cartella sorgente.")
+            messagebox.showwarning(t("Warning"),
+                                   t("No image file in the source folder."))
             return
 
         self.matches = []
         self._match_by_path = {}
         self._clear_tree(self._match_tree)
-        self._match_count_lbl.config(text="Analisi in corso...")
+        self._match_count_lbl.config(text=t("Analysing matches..."))
         self.notebook.select(2)
-        self._start_worker(self._match_worker, (), "Analisi corrispondenze in corso...")
+        self._start_worker(self._match_worker, (), t("Analysing matches..."))
 
     def _match_worker(self):
         total = len(self.scanned_files)
-        self.log(f"Avvio abbinamento: {total} file da analizzare, "
-                 f"{len(self.source_files)} sorgenti disponibili.")
+        self.log(t("Starting match: {count} files to analyse, {sources} sources "
+                   "available.").format(count=total, sources=len(self.source_files)))
 
         def progress(done: int, of: int):
-            self._set_progress(done / max(of, 1) * 100, f"Abbinamento... {done}/{of}")
+            self._set_progress(
+                done / max(of, 1) * 100,
+                t("Matching... {done}/{total}").format(done=done, total=of),
+            )
 
         matches = core.build_matches(self.scanned_files, self.source_files,
                                      progress=progress, cancel_event=self._cancel_event)
@@ -1083,22 +1203,24 @@ class RebrandingToolApp:
                                     tags=(self._row_tag(match),))
 
         matched = sum(1 for m in self.matches if m.source is not None)
-        weak = sum(1 for m in self.matches if m.source is not None and m.quality == "Debole")
+        weak = sum(1 for m in self.matches
+                   if m.source is not None and m.quality == core.QUALITY_WEAK)
         total = len(self.matches)
 
-        label = f"{total} file analizzati: {matched} corrispondenze"
+        label = t("{total} files analysed: {matched} matches").format(
+            total=total, matched=matched)
         if total - matched:
-            label += f", {total - matched} senza corrispondenza"
+            label += t(", {count} without a match").format(count=total - matched)
         if weak:
-            label += f", {weak} da verificare"
+            label += t(", {count} to review").format(count=weak)
         self._match_count_lbl.config(text=label)
         self.progress_var.set(100)
         self._status(label)
-        self.log(f"Abbinamento completato: {matched}/{total} corrispondenze "
-                 f"({weak} deboli).")
+        self.log(t("Match complete: {matched}/{total} matches ({weak} weak).").format(
+            matched=matched, total=total, weak=weak))
 
     @staticmethod
-    def _match_row(index: int, match: Match) -> tuple:
+    def _match_row(index, match: Match) -> tuple:
         return (
             index,
             "✓" if match.enabled else "✗",
@@ -1107,7 +1229,7 @@ class RebrandingToolApp:
             match.target.dim_str,
             match.source_name,
             match.source_dim_str,
-            match.quality,
+            match.quality_label,
             match.target.path,
         )
 
@@ -1117,7 +1239,7 @@ class RebrandingToolApp:
             return "no_match"
         if not match.enabled:
             return "disabled"
-        return "weak" if match.quality == "Debole" else "matched"
+        return "weak" if match.quality == core.QUALITY_WEAK else "matched"
 
     def _refresh_match_row(self, match: Match):
         row_id = match.target.path
@@ -1138,7 +1260,7 @@ class RebrandingToolApp:
     def _on_match_click(self, event):
         if self._match_tree.identify_region(event.x, event.y) != "cell":
             return
-        if self._match_tree.identify_column(event.x) != "#2":  # colonna ✓
+        if self._match_tree.identify_column(event.x) != "#2":  # the ✓ column
             return
         row_id = self._match_tree.identify_row(event.y)
         if row_id:
@@ -1169,20 +1291,19 @@ class RebrandingToolApp:
             self._keep_image("match_target", thumb)
             self._target_canvas.create_image(45, 35, image=thumb, anchor=tk.CENTER)
         else:
-            self._target_canvas.create_text(45, 35, text="N/D", fill="#aaaaaa")
+            self._target_canvas.create_text(45, 35, text=t("N/A"), fill="#aaaaaa")
 
         self._target_preview_info.config(
-            text=(f"Nome: {match.target.name}\n"
-                  f"Formato: {match.target.fmt}\n"
-                  f"Dim: {match.target.dim_str}\n"
-                  f"Peso: {match.target.size_str}")
+            text=t("Name: {name}\nFormat: {fmt}\nRes: {dim}\nWeight: {size}").format(
+                name=match.target.name, fmt=match.target.fmt,
+                dim=match.target.dim_str, size=match.target.size_str)
         )
 
         self._src_canvas.delete("all")
         if match.source is None:
-            self._src_canvas.create_text(45, 35, text="Nessun\nMatch", fill="#cc4444")
-            self._src_preview_info.config(text="Corrispondenza non trovata.\n"
-                                               "Doppio clic per sceglierla a mano.")
+            self._src_canvas.create_text(45, 35, text=t("No\nMatch"), fill="#cc4444")
+            self._src_preview_info.config(
+                text=t("Match not found.\nDouble-click to choose one manually."))
             return
 
         src_thumb = self._make_thumbnail(match.source.path, MATCH_PREVIEW_SIZE)
@@ -1190,28 +1311,28 @@ class RebrandingToolApp:
             self._keep_image("match_source", src_thumb)
             self._src_canvas.create_image(45, 35, image=src_thumb, anchor=tk.CENTER)
         else:
-            self._src_canvas.create_text(45, 35, text="N/D", fill="#aaaaaa")
+            self._src_canvas.create_text(45, 35, text=t("N/A"), fill="#aaaaaa")
 
         self._src_preview_info.config(
-            text=(f"Nome: {match.source.name}\n"
-                  f"Formato: {match.source.fmt}\n"
-                  f"Dim: {match.source.dim_str}\n"
-                  f"Qualità: {match.quality}")
+            text=t("Name: {name}\nFormat: {fmt}\nRes: {dim}\nQuality: {quality}").format(
+                name=match.source.name, fmt=match.source.fmt,
+                dim=match.source.dim_str, quality=match.quality_label)
         )
 
     def _choose_source_dialog(self, row_id: str) -> tk.Toplevel | None:
         """
-        Permette di scegliere manualmente il file sorgente per una riga.
-        Restituisce la finestra creata (utile ai test), o None se non applicabile.
+        Let the user pick the source file for a row by hand.
+        Returns the window created (handy for tests), or None if not applicable.
         """
         match = self._match_by_path.get(row_id)
         if not match:
             return None
         if not self.source_files:
-            messagebox.showinfo("Nessun sorgente", "La cartella sorgente non contiene file.")
+            messagebox.showinfo(t("No sources"),
+                                t("The source folder contains no files."))
             return None
 
-        # I sorgenti dello stesso formato per primi, ordinati per idoneità.
+        # Same-format sources first, ordered by suitability.
         target_ext = core.normalized_ext(match.target.ext)
         ordered = sorted(
             self.source_files,
@@ -1222,16 +1343,17 @@ class RebrandingToolApp:
         )
 
         dialog = tk.Toplevel(self.root)
-        dialog.title(f"Scegli sorgente per {match.target.name}")
+        dialog.title(t("Choose a source for {name}").format(name=match.target.name))
         dialog.transient(self.root)
         dialog.geometry("640x420")
 
         ttk.Label(dialog,
-                  text=f"File da sostituire: {match.target.name} "
-                       f"({match.target.fmt}, {match.target.dim_str})",
+                  text=t("File to replace: {name} ({fmt}, {dim})").format(
+                      name=match.target.name, fmt=match.target.fmt,
+                      dim=match.target.dim_str),
                   font=("Arial", 10, "bold")).pack(anchor=tk.W, padx=12, pady=(12, 4))
         ttk.Label(dialog,
-                  text="I sorgenti dello stesso formato sono elencati per primi.",
+                  text=t("Sources with a matching format are listed first."),
                   font=("Arial", 9), foreground="#666666").pack(anchor=tk.W, padx=12)
 
         list_frame = ttk.Frame(dialog)
@@ -1243,8 +1365,10 @@ class RebrandingToolApp:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         for info in ordered:
-            flag = "" if core.normalized_ext(info.ext) == target_ext else "  [formato diverso]"
-            listbox.insert(tk.END, f"{info.name}  —  {info.dim_str}, {info.size_str}{flag}")
+            flag = ("" if core.normalized_ext(info.ext) == target_ext
+                    else t("  [different format]"))
+            listbox.insert(tk.END, f"{info.name}  —  {info.dim_str}, "
+                                   f"{info.size_str}{flag}")
 
         if match.source is not None:
             try:
@@ -1256,7 +1380,7 @@ class RebrandingToolApp:
         def confirm():
             selection = listbox.curselection()
             if not selection:
-                messagebox.showwarning("Attenzione", "Seleziona un file sorgente.",
+                messagebox.showwarning(t("Warning"), t("Select a source file."),
                                        parent=dialog)
                 return
             chosen = ordered[selection[0]]
@@ -1267,15 +1391,15 @@ class RebrandingToolApp:
                                            match.target.path, chosen.path)
             self._refresh_match_row(match)
             self._on_match_select()
-            self.log(f"Sorgente impostato manualmente per {match.target.name}: "
-                     f"{chosen.name}")
+            self.log(t("Source manually set for {target}: {source}").format(
+                target=match.target.name, source=chosen.name))
             dialog.destroy()
 
         buttons = ttk.Frame(dialog)
         buttons.pack(fill=tk.X, padx=12, pady=(0, 12))
-        ttk.Button(buttons, text="Conferma", command=confirm,
+        ttk.Button(buttons, text=t("Confirm"), command=confirm,
                    **self.btn("primary")).pack(side=tk.RIGHT, padx=4)
-        ttk.Button(buttons, text="Annulla", command=dialog.destroy,
+        ttk.Button(buttons, text=t("Cancel"), command=dialog.destroy,
                    **self.btn("outline")).pack(side=tk.RIGHT, padx=4)
 
         listbox.bind("<Double-1>", lambda _e: confirm())
@@ -1297,25 +1421,26 @@ class RebrandingToolApp:
 
     def _export_matches(self):
         if not self.matches:
-            messagebox.showinfo("Nessun dato", "Esegui prima l'analisi delle corrispondenze.")
+            messagebox.showinfo(t("No data"), t("Run the match analysis first."))
             return
         destination = filedialog.asksaveasfilename(
-            title="Esporta corrispondenze",
+            title=t("Export matches"),
             defaultextension=".csv",
-            initialfile="corrispondenze.csv",
-            filetypes=[("CSV", "*.csv"), ("Tutti i file", "*.*")],
+            initialfile="matches.csv",
+            filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
         )
         if not destination:
             return
         try:
             core.export_matches_csv(self.matches, destination)
-            self.log(f"Corrispondenze esportate in {destination}")
-            messagebox.showinfo("Esportazione completata", f"File salvato:\n{destination}")
+            self.log(t("Matches exported to {path}").format(path=destination))
+            messagebox.showinfo(t("Export complete"),
+                                t("File saved:\n{path}").format(path=destination))
         except OSError as exc:
-            messagebox.showerror("Errore esportazione", str(exc))
+            messagebox.showerror(t("Export error"), str(exc))
 
     # ------------------------------------------------------------------
-    # Azioni: Sostituzione
+    # Replacement
     # ------------------------------------------------------------------
 
     def _enabled_matches(self) -> list[Match]:
@@ -1323,13 +1448,13 @@ class RebrandingToolApp:
 
     def _go_to_replace(self):
         if not self._enabled_matches():
-            messagebox.showwarning("Attenzione", "Nessuna sostituzione selezionata.")
+            messagebox.showwarning(t("Warning"), t("No replacement selected."))
             return
         self.notebook.select(3)
 
     def _on_tab_changed(self, _event=None):
-        # Il riepilogo va ricalcolato anche quando si arriva al tab 4
-        # direttamente dalla barra dei tab, non solo dal pulsante «Procedi».
+        # The summary must be recomputed when the user reaches tab 4 straight
+        # from the tab strip, not only via the «Proceed» button.
         if self.notebook.index("current") == 3:
             self._refresh_replace_summary()
 
@@ -1337,185 +1462,218 @@ class RebrandingToolApp:
         enabled = self._enabled_matches()
         if not enabled:
             self._replace_summary_lbl.config(
-                text="Nessuna sostituzione selezionata.\n"
-                     "Torna al tab ③ e seleziona almeno una corrispondenza.")
+                text=t("No replacement selected.\nGo back to tab ③ and select at "
+                       "least one match."))
             return
 
         if self._dry_run_var.get():
-            mode = "SIMULAZIONE ATTIVA: nessun file verrà modificato."
+            mode = t("DRY RUN ENABLED: no file will be modified.")
         elif self._backup_var.get():
-            mode = "I file originali verranno salvati con estensione .bak (ripristinabili)."
+            mode = t("The original files will be saved with a .bak extension "
+                     "(restorable).")
         else:
-            mode = "BACKUP DISATTIVO: i file originali saranno sovrascritti definitivamente."
+            mode = t("BACKUP DISABLED: the original files will be overwritten "
+                     "permanently.")
 
-        weak = sum(1 for m in enabled if m.quality == "Debole")
-        text = (f"Verranno sostituiti {len(enabled)} file su "
-                f"{len(self.matches)} analizzati.\n{mode}")
+        weak = sum(1 for m in enabled if m.quality == core.QUALITY_WEAK)
+        text = t("{count} of {total} analysed files will be replaced.\n{mode}").format(
+            count=len(enabled), total=len(self.matches), mode=mode)
         if weak:
-            text += f"\n⚠  {weak} abbinamenti sono classificati «Debole»: verificali nel tab ③."
+            text += t("\n⚠  {count} matches are rated «Weak»: review them in "
+                      "tab ③.").format(count=weak)
         self._replace_summary_lbl.config(text=text)
 
     def _execute_replacement(self):
         enabled = self._enabled_matches()
         if not enabled:
-            messagebox.showwarning("Attenzione", "Nessuna sostituzione da eseguire.")
+            messagebox.showwarning(t("Warning"), t("No replacement to run."))
             return
 
         do_backup = self._backup_var.get()
         dry_run = self._dry_run_var.get()
 
         if dry_run:
-            question = (f"Simulazione su {len(enabled)} file.\n\n"
-                        "Nessun file verrà modificato.\n\nContinuare?")
+            question = t("Dry run over {count} files.\n\n"
+                         "No file will be modified.\n\nContinue?").format(
+                count=len(enabled))
         else:
-            question = (f"Stai per sovrascrivere {len(enabled)} file.\n\n"
-                        f"Backup: {'SÌ' if do_backup else 'NO — operazione irreversibile'}\n\n"
-                        "Continuare?")
-        if not messagebox.askyesno("Conferma Sostituzione", question):
+            question = t("You are about to overwrite {count} files.\n\n"
+                         "Backup: {backup}\n\nContinue?").format(
+                count=len(enabled),
+                backup=t("YES") if do_backup else t("NO — this cannot be undone"))
+        if not messagebox.askyesno(t("Confirm Replacement"), question):
             return
 
         self._save_settings()
-        # Le anteprime tengono un riferimento alle immagini: su Windows
-        # impedirebbero la sovrascrittura dei file target.
+        # The previews hold a reference to the images: on Windows that would
+        # prevent the target files from being overwritten.
         self._clear_previews()
         self._start_worker(self._replace_worker, (enabled, do_backup, dry_run),
-                           "Sostituzione in corso...")
+                           t("Replacing..."))
 
     def _replace_worker(self, matches: list[Match], do_backup: bool, dry_run: bool):
-        prefix = "SIMULAZIONE" if dry_run else "SOSTITUZIONE"
-        self.log(f"=== INIZIO {prefix}: {len(matches)} file "
-                 f"(backup: {'sì' if do_backup else 'no'}) ===")
+        action = t("DRY RUN") if dry_run else t("REPLACEMENT")
+        action_title = t("Dry run") if dry_run else t("Replacement")
+        self.log(t("=== {action} START: {count} files (backup: {backup}) ===").format(
+            action=action, count=len(matches),
+            backup=t("yes") if do_backup else t("no")))
 
         def progress(done: int, of: int, outcome: core.ReplaceOutcome):
             name = os.path.basename(outcome.target)
             if outcome.status == "ok":
                 if dry_run:
-                    self.log(f"  ○ [simulato] {name}  ←  {os.path.basename(outcome.source)}")
+                    self.log(t("  ○ [simulated] {target}  ←  {source}").format(
+                        target=name, source=os.path.basename(outcome.source)))
                 else:
                     if outcome.backup:
-                        self.log(f"  backup: {outcome.backup}")
-                    self.log(f"  ✅ Sostituito: {name}  ←  {os.path.basename(outcome.source)}")
+                        self.log(t("  backup: {path}").format(path=outcome.backup))
+                    self.log(t("  ✅ Replaced: {target}  ←  {source}").format(
+                        target=name, source=os.path.basename(outcome.source)))
             elif outcome.status == "skipped":
-                self.log(f"  ⏭ Saltato {name}: {outcome.message}", logging.WARNING)
+                self.log(t("  ⏭ Skipped {target}: {message}").format(
+                    target=name, message=outcome.message), logging.WARNING)
             else:
-                self.log(f"  ❌ Errore su {name}: {outcome.message}", logging.ERROR)
-            self._set_progress(done / max(of, 1) * 100, f"{prefix.title()}... {done}/{of}")
+                self.log(t("  ❌ Error on {target}: {message}").format(
+                    target=name, message=outcome.message), logging.ERROR)
+
+            template = (t("Dry run... {done}/{total}") if dry_run
+                        else t("Replacement... {done}/{total}"))
+            self._set_progress(done / max(of, 1) * 100,
+                               template.format(done=done, total=of))
 
         report = core.replace_all(matches, backup=do_backup, dry_run=dry_run,
                                   progress=progress, cancel_event=self._cancel_event)
 
-        self.log(f"=== {prefix} COMPLETATA: {report.ok} ok, {report.skipped} saltati, "
-                 f"{report.errors} errori su {report.total} file ===")
-        self._ui(lambda: self._replacement_done(report, dry_run))
+        self.log(t("=== {action} COMPLETE: {ok} ok, {skipped} skipped, {errors} "
+                   "errors out of {total} files ===").format(
+            action=action, ok=report.ok, skipped=report.skipped,
+            errors=report.errors, total=report.total))
+        self._ui(lambda: self._replacement_done(report, dry_run, action_title))
 
-    def _replacement_done(self, report: core.ReplaceReport, dry_run: bool):
+    def _replacement_done(self, report: core.ReplaceReport, dry_run: bool,
+                          action_title: str):
         self.progress_var.set(100)
-        summary = (f"{'Simulazione' if dry_run else 'Sostituzione'} completata: "
-                   f"{report.ok} ok, {report.skipped} saltati, {report.errors} errori.")
-        self._status(summary)
+        self._status(t("{action} complete: {ok} ok, {skipped} skipped, "
+                       "{errors} errors.").format(
+            action=action_title, ok=report.ok, skipped=report.skipped,
+            errors=report.errors))
 
-        detail = (f"File elaborati: {report.total}\n"
-                  f"Completati: {report.ok}\n"
-                  f"Saltati: {report.skipped}\n"
-                  f"Errori: {report.errors}")
+        detail = t("Files processed: {total}\nCompleted: {ok}\nSkipped: {skipped}\n"
+                   "Errors: {errors}").format(
+            total=report.total, ok=report.ok, skipped=report.skipped,
+            errors=report.errors)
         if report.cancelled:
-            detail += "\n\nOperazione interrotta dall'utente."
+            detail += t("\n\nOperation interrupted by the user.")
 
         if report.errors:
-            messagebox.showwarning("Completato con errori",
-                                   f"{detail}\n\nConsulta il log per i dettagli.")
+            messagebox.showwarning(
+                t("Completed with errors"),
+                t("{detail}\n\nSee the log for details.").format(detail=detail))
         elif dry_run:
-            messagebox.showinfo("Simulazione completata",
-                                f"{detail}\n\nNessun file è stato modificato.")
+            messagebox.showinfo(
+                t("Dry run complete"),
+                t("{detail}\n\nNo file was modified.").format(detail=detail))
         else:
-            messagebox.showinfo("Completato",
-                                f"✅ Sostituzione completata con successo!\n\n{detail}")
+            messagebox.showinfo(
+                t("Completed"),
+                t("✅ Replacement completed successfully!\n\n{detail}").format(
+                    detail=detail))
 
         if not dry_run and report.ok:
             self._ask_export_report(report)
 
     def _ask_export_report(self, report: core.ReplaceReport):
-        if not messagebox.askyesno("Report", "Vuoi salvare un report CSV dell'operazione?"):
+        if not messagebox.askyesno(
+            t("Report"), t("Do you want to save a CSV report of the operation?")
+        ):
             return
         destination = filedialog.asksaveasfilename(
-            title="Salva report", defaultextension=".csv",
-            initialfile="report_sostituzione.csv",
-            filetypes=[("CSV", "*.csv"), ("Tutti i file", "*.*")],
+            title=t("Save report"), defaultextension=".csv",
+            initialfile="replacement_report.csv",
+            filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
         )
         if not destination:
             return
         try:
             core.export_report_csv(report, destination)
-            self.log(f"Report salvato in {destination}")
+            self.log(t("Report saved to {path}").format(path=destination))
         except OSError as exc:
-            messagebox.showerror("Errore salvataggio report", str(exc))
+            messagebox.showerror(t("Report save error"), str(exc))
 
     def _restore_backups(self):
         folder = self.scan_folder.get().strip()
         if not folder or not os.path.isdir(folder):
-            messagebox.showerror("Errore", "Seleziona una cartella da scansionare valida "
-                                           "nel tab ① prima di ripristinare.")
+            messagebox.showerror(
+                t("Error"),
+                t("Select a valid folder to scan in tab ① before restoring."))
             return
 
         backups = core.find_backups(folder)
         if not backups:
-            messagebox.showinfo("Nessun backup",
-                                f"Nessun file .bak trovato in:\n{folder}")
+            messagebox.showinfo(t("No backup"),
+                                t("No .bak file found in:\n{path}").format(path=folder))
             return
 
         distinct = len({core.backup_origin(b) for b in backups})
         if not messagebox.askyesno(
-            "Conferma ripristino",
-            f"Trovati {len(backups)} backup relativi a {distinct} file in:\n{folder}\n\n"
-            "I file correnti verranno riportati alla versione precedente al rebranding.\n\n"
-            "Continuare?",
+            t("Confirm restore"),
+            t("Found {count} backups covering {files} files in:\n{path}\n\n"
+              "The current files will be reverted to their pre-rebranding "
+              "version.\n\nContinue?").format(
+                count=len(backups), files=distinct, path=folder),
         ):
             return
 
         remove = messagebox.askyesno(
-            "Backup",
-            "Vuoi eliminare i file .bak dopo il ripristino?\n\n"
-            "Scegli «No» per conservarli.",
+            t("Backup"),
+            t("Do you want to delete the .bak files after restoring?\n\n"
+              "Choose «No» to keep them."),
         )
         self._clear_previews()
-        self._start_worker(self._restore_worker, (folder, remove), "Ripristino in corso...")
+        self._start_worker(self._restore_worker, (folder, remove), t("Restoring..."))
 
     def _restore_worker(self, folder: str, remove: bool):
-        self.log(f"=== INIZIO RIPRISTINO da {folder} ===")
+        self.log(t("=== RESTORE START from {path} ===").format(path=folder))
 
         def progress(done: int, of: int, outcome: core.ReplaceOutcome):
             name = os.path.basename(outcome.target)
             if outcome.ok:
-                self.log(f"  ↩ Ripristinato: {name}")
+                self.log(t("  ↩ Restored: {target}").format(target=name))
             else:
-                self.log(f"  ❌ Errore ripristino {name}: {outcome.message}", logging.ERROR)
-            self._set_progress(done / max(of, 1) * 100, f"Ripristino... {done}/{of}")
+                self.log(t("  ❌ Restore error on {target}: {message}").format(
+                    target=name, message=outcome.message), logging.ERROR)
+            self._set_progress(
+                done / max(of, 1) * 100,
+                t("Restore... {done}/{total}").format(done=done, total=of),
+            )
 
         report = core.restore_backups(folder, remove_backup=remove, progress=progress,
                                       cancel_event=self._cancel_event)
-        self.log(f"=== RIPRISTINO COMPLETATO: {report.ok} ok, {report.errors} errori ===")
+        self.log(t("=== RESTORE COMPLETE: {ok} ok, {errors} errors ===").format(
+            ok=report.ok, errors=report.errors))
 
         def done():
             self.progress_var.set(100)
-            self._status(f"Ripristino completato: {report.ok} ok, {report.errors} errori.")
+            self._status(t("Restore complete: {ok} ok, {errors} errors.").format(
+                ok=report.ok, errors=report.errors))
             messagebox.showinfo(
-                "Ripristino completato",
-                f"File ripristinati: {report.ok}\nErrori: {report.errors}",
+                t("Restore complete"),
+                t("Files restored: {ok}\nErrors: {errors}").format(
+                    ok=report.ok, errors=report.errors),
             )
 
         self._ui(done)
 
     # ------------------------------------------------------------------
-    # Utilità UI
+    # UI helpers
     # ------------------------------------------------------------------
 
     def _sort_tree(self, tree: ttk.Treeview, col: str):
         """
-        Ordina una colonna alternando crescente/decrescente.
+        Sort a column, alternating ascending/descending.
 
-        L'ordinamento è consapevole del tipo: le colonne numeriche e quelle
-        con unità di misura venivano prima ordinate come testo, mettendo
-        «10» prima di «2».
+        The sort is type-aware: numeric columns and those carrying units used
+        to be sorted as text, putting «10» before «2».
         """
         key = (id(tree), col)
         descending = self._sort_state.get(key, False)
@@ -1539,8 +1697,8 @@ class RebrandingToolApp:
     @staticmethod
     def _numeric_prefix(raw: str) -> float:
         """
-        Valore numerico da una cella formattata (`1.5 MB`, `800×600 px`).
-        Per le risoluzioni usa l'area, così l'ordinamento è sensato.
+        Numeric value out of a formatted cell (`1.5 MB`, `800×600 px`).
+        Resolutions use the area, so the ordering is meaningful.
         """
         numbers = [float(n) for n in re.findall(r"[0-9]+(?:\.[0-9]+)?", raw)]
         if not numbers:
@@ -1559,8 +1717,8 @@ class RebrandingToolApp:
 
     def _clear_previews(self):
         """
-        Svuota le anteprime rilasciando i riferimenti alle immagini.
-        Serve anche a sbloccare i file su Windows prima di sovrascriverli.
+        Empty the previews, releasing the image references.
+        This also unlocks the files on Windows before overwriting them.
         """
         for canvas in (self._preview_canvas, self._target_canvas, self._src_canvas):
             canvas.delete("all")
@@ -1571,9 +1729,10 @@ class RebrandingToolApp:
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete("1.0", tk.END)
         self.log_text.config(state=tk.DISABLED)
+        self._log_buffer.clear()
 
 
-# Compatibilità: alcuni script importavano queste utility da questo modulo.
+# Backwards compatibility: some scripts imported these helpers from here.
 get_base_path = core.get_base_path
 resource_path = core.resource_path
 scan_files = core.scan_files
