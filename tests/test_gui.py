@@ -37,8 +37,29 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(scope="session")
+def tk_root():
+    """
+    One Tk interpreter for the whole test session.
+
+    Creating and destroying a root per test looks tidier, but Tk does not
+    survive it: after a couple of dozen create/destroy cycles in one process,
+    Windows fails to build another interpreter with
+    `TclError: invalid command name "tcl_findLibrary"`. Linux tolerates it,
+    which is exactly why this only ever broke in CI. Reusing a single root
+    removes the cycle entirely.
+    """
+    root = tk.Tk()
+    root.withdraw()
+    yield root
+    try:
+        root.destroy()
+    except tk.TclError:
+        pass
+
+
 @pytest.fixture
-def app(tmp_path, monkeypatch):
+def app(tk_root, tmp_path, monkeypatch):
     """Application instance isolated from the real user's settings."""
     monkeypatch.setattr(core, "writable_app_dir", lambda sub: str(tmp_path / sub))
     os.makedirs(tmp_path / "config", exist_ok=True)
@@ -46,20 +67,31 @@ def app(tmp_path, monkeypatch):
 
     from rebranding_tool import RebrandingToolApp
 
-    root = tk.Tk()
-    root.withdraw()
-    instance = RebrandingToolApp(root)
-    root.update()
+    instance = RebrandingToolApp(tk_root)
+    tk_root.update()
     yield instance
 
-    # Shut down like the real thing: cancel the UI queue tick, otherwise the
-    # pending after() resurfaces during the next test.
+    # Tear down the app but leave the shared interpreter alive: cancel the UI
+    # queue tick first, otherwise the pending after() fires during the next
+    # test against widgets that no longer exist.
     instance._worker = None
+    instance._closing = True
+    if instance._pump_after_id is not None:
+        try:
+            tk_root.after_cancel(instance._pump_after_id)
+        except tk.TclError:
+            pass
+        instance._pump_after_id = None
+
+    for child in list(tk_root.winfo_children()):
+        try:
+            child.destroy()
+        except tk.TclError:
+            pass
     try:
-        instance._on_close()
+        tk_root.update()
     except tk.TclError:
         pass
-    tk._default_root = None
 
 
 def make_image(path, size=(100, 50), color=(255, 0, 0), fmt=None):
@@ -612,9 +644,27 @@ def test_language_switch_is_refused_while_busy(app, tmp_path, monkeypatch):
     assert i18n.get_language() == "it"
 
 
-def test_closing_stops_the_ui_pump(app):
-    """The after() loop kept running after the window was destroyed."""
+def test_closing_stops_the_ui_pump(app, monkeypatch):
+    """
+    The after() loop kept running after the window was destroyed, raising a
+    background Tcl error.
+
+    `destroy` is stubbed out because the interpreter is shared with the rest of
+    the session; everything else runs for real.
+    """
+    import gc
+
+    destroyed = []
+    monkeypatch.setattr(app.root, "destroy", lambda: destroyed.append(True))
+
+    assert app._pump_after_id is not None
     app._on_close()
+
+    assert destroyed == [True]
     assert app._closing is True
-    # A later pump must return immediately without raising TclError.
+    assert app._pump_after_id is None, "the pending tick must be cancelled"
+    assert gc.isenabled(), "the collector must never be left paused on exit"
+
+    # A later pump must return immediately instead of rescheduling itself.
     app._pump_ui_queue()
+    assert app._pump_after_id is None
