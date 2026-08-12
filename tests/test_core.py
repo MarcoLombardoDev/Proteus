@@ -541,11 +541,32 @@ def test_load_settings_survives_corrupted_file(tmp_path, monkeypatch):
     assert core.load_settings() == core.DEFAULT_SETTINGS
 
 
-def test_writable_app_dir_falls_back(tmp_path, monkeypatch):
-    monkeypatch.setattr(core, "get_base_path", lambda: "/proc/definitely/not/writable")
+def test_writable_app_dir_uses_the_application_folder_when_writable(tmp_path, monkeypatch):
+    monkeypatch.setattr(core, "get_base_path", lambda: str(tmp_path / "app"))
     monkeypatch.setattr(core, "user_data_dir", lambda: str(tmp_path / "userdata"))
+
     result = core.writable_app_dir("logs")
-    assert result.startswith(str(tmp_path))
+    assert result == os.path.join(str(tmp_path / "app"), "logs")
+    assert os.path.isdir(result)
+    assert not os.path.exists(tmp_path / "userdata")
+
+
+def test_writable_app_dir_falls_back_when_not_writable(tmp_path, monkeypatch):
+    """
+    A read-only application folder (the `C:\\Program Files` case) sends logs and
+    config to the user data folder instead.
+
+    Writability is stubbed rather than pointed at a path that merely happens to
+    be unwritable: `/proc/...` is read-only on Linux but a perfectly creatable
+    relative path on Windows, which made this test pass on one platform and
+    fail on the other.
+    """
+    monkeypatch.setattr(core, "get_base_path", lambda: str(tmp_path / "app"))
+    monkeypatch.setattr(core, "user_data_dir", lambda: str(tmp_path / "userdata"))
+    monkeypatch.setattr(core, "_is_writable_dir", lambda path: False)
+
+    result = core.writable_app_dir("logs")
+    assert result == os.path.join(str(tmp_path / "userdata"), "logs")
     assert os.path.isdir(result)
 
 
