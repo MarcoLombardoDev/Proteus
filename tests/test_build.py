@@ -120,6 +120,65 @@ def test_builder_names_the_executable_after_the_product():
     assert builder.exe_suffix == (".exe" if os.name == "nt" else "")
 
 
+# ---------------------------------------------------------------------------
+# The two binaries
+# ---------------------------------------------------------------------------
+
+def _pyinstaller_command(monkeypatch, builder, **kwargs) -> list[str]:
+    """Capture the PyInstaller invocation without running it."""
+    captured: list[list[str]] = []
+
+    def fake_run(args, **_kwargs):
+        captured.append(args)
+        # The ttkbootstrap probe goes through the same helper.
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(builder, "_run", fake_run)
+    builder.build_executable(**kwargs)   # returns None: nothing was really built
+    return next(a for a in captured if "PyInstaller" in a)
+
+
+def test_the_gui_binary_is_windowed(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    builder = build.RebrandingToolBuilder()
+    cmd = _pyinstaller_command(monkeypatch, builder)
+    assert "--windowed" in cmd
+    assert f"--name={builder.app_name}" in cmd
+
+
+def test_the_cli_binary_is_console_attached(monkeypatch, tmp_path):
+    """
+    Regression: with only a --windowed executable, Windows gives the CLI no
+    console at all — every line it prints disappears and a scheduled job cannot
+    be diagnosed. The command line therefore needs its own console binary.
+    """
+    monkeypatch.chdir(tmp_path)
+    builder = build.RebrandingToolBuilder()
+    cmd = _pyinstaller_command(monkeypatch, builder,
+                               name=builder.cli_name, windowed=False)
+    assert "--console" in cmd
+    assert "--windowed" not in cmd
+    assert f"--name={builder.cli_name}" in cmd
+
+
+def test_cli_module_is_bundled():
+    """Without it the frozen executable cannot serve a scheduled job at all."""
+    with open(build.__file__, encoding="utf-8") as fh:
+        source = fh.read()
+    assert '"cli"' in source
+    assert "cli.py" in source
+
+
+def test_distribution_notes_mention_the_command_line(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    builder = build.RebrandingToolBuilder()
+    builder.create_distribution("dist/Proteus.exe", "dist/proteus-cli.exe")
+
+    notes = (tmp_path / "dist" / "READ_ME_FIRST.txt").read_text(encoding="utf-8")
+    assert "proteus-cli.exe" in notes
+    assert "--apply" in notes
+
+
 def test_prerequisites_report_a_missing_source_file(tmp_path, monkeypatch, capsys):
     """A missing module must be reported rather than discovered by PyInstaller."""
     monkeypatch.chdir(tmp_path)

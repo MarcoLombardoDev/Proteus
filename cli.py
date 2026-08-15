@@ -1,0 +1,378 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Proteus - command line interface, for unattended use.
+
+The graphical interface protects the user with previews, colours and
+confirmation dialogs. A scheduled job has none of that: nobody is watching, so
+the safeguards have to be built into the defaults instead.
+
+  * a run is a **dry run** unless `--apply` is given;
+  * backups are on unless `--no-backup` is given;
+  * a run that would write refuses to start when hits are too uncertain to be
+    accepted without human eyes (`--max-uncertain`).
+
+The exit code is the real return value — a scheduler reads that, not the log:
+
+    0  finished, everything replaced (or simulated) cleanly
+    1  finished, but some replacements failed
+    2  nothing matched
+    3  the request itself was wrong (bad folders, bad pattern)
+    4  refused on safety grounds
+    130 interrupted
+
+Examples
+--------
+    # See what would happen, changing nothing
+    python -m cli --scan /srv/share --source ./new_logos --pattern "logo*.png"
+
+    # Find the old logo wherever it hides, documents included, and write
+    python -m cli --scan /srv/share --source ./new_logos \\
+                  --reference ./old/logo.png --office --apply --report out.csv
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import time
+
+import core
+import i18n
+
+# Exit codes. Named because a scheduler branches on them.
+EXIT_OK = 0
+EXIT_ERRORS = 1
+EXIT_NOTHING_FOUND = 2
+EXIT_BAD_REQUEST = 3
+EXIT_REFUSED = 4
+EXIT_INTERRUPTED = 130
+
+#: How often progress is reported, in seconds. A scheduled job writes to a log
+#: file, so a line per file would produce megabytes of noise.
+PROGRESS_INTERVAL = 2.0
+
+
+class Reporter:
+    """Console output that is readable both live and in a log file."""
+
+    def __init__(self, quiet: bool = False, verbose: bool = False):
+        self.quiet = quiet
+        self.verbose = verbose
+        self._last = 0.0
+
+    def say(self, message: str) -> None:
+        if not self.quiet:
+            print(message, flush=True)
+
+    def detail(self, message: str) -> None:
+        if self.verbose and not self.quiet:
+            print(message, flush=True)
+
+    def problem(self, message: str) -> None:
+        print(message, file=sys.stderr, flush=True)
+
+    def progress(self, label: str, done: int, total: int) -> None:
+        """Throttled progress, so a long scan does not flood the log."""
+        if self.quiet or not total:
+            return
+        now = time.monotonic()
+        if done < total and now - self._last < PROGRESS_INTERVAL:
+            return
+        self._last = now
+        print(f"  {label}: {done}/{total} ({done * 100 // total}%)", flush=True)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="proteus",
+        description="Bulk-replace logos across a folder tree, unattended.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Exit codes: 0 ok · 1 errors · 2 nothing found · 3 bad request "
+               "· 4 refused on safety grounds",
+    )
+
+    parser.add_argument("--version", action="version",
+                        version=f"{core.APP_NAME} {core.APP_TAGLINE} {core.APP_VERSION}")
+
+    what = parser.add_argument_group("what to scan")
+    what.add_argument("--scan", metavar="FOLDER",
+                      help="folder to search for files to replace")
+    what.add_argument("--source", metavar="FOLDER",
+                      help="folder holding the new logos")
+
+    how = parser.add_argument_group("how to find it")
+    how.add_argument("--pattern", default="", metavar="GLOB",
+                     help='wildcard pattern, e.g. "logo*.png". Several may be '
+                          'separated by ";". With --reference it acts as a '
+                          'pre-filter.')
+    how.add_argument("--reference", nargs="+", default=[], metavar="IMAGE",
+                     help="one or more copies of the OLD logo: find images that "
+                          "look like them, whatever they are called")
+    how.add_argument("--similarity", type=int, default=int(core.DEFAULT_SIMILARITY * 100),
+                     metavar="PCT",
+                     help="minimum visual similarity for --reference "
+                          f"(default: {int(core.DEFAULT_SIMILARITY * 100)})")
+    how.add_argument("--office", action="store_true",
+                     help="also look inside .docx/.pptx/.xlsx documents")
+
+    action = parser.add_argument_group("what to do")
+    action.add_argument("--apply", action="store_true",
+                        help="actually write. Without it nothing is modified.")
+    action.add_argument("--no-backup", action="store_true",
+                        help="do not keep a .bak of each original (not advised)")
+    action.add_argument("--restore", action="store_true",
+                        help="restore originals from their backups and exit")
+
+    safety = parser.add_argument_group("safety")
+    safety.add_argument("--max-uncertain", type=int, default=0, metavar="N",
+                        help="refuse to --apply when more than N hits are below "
+                             f"{int(core.SIMILARITY_CONFIDENT * 100)}%% similarity "
+                             "(default: 0, since nobody is watching)")
+    safety.add_argument("--allow-distortion", action="store_true",
+                        help="allow replacements that would stretch a picture "
+                             "inside a document")
+
+    out = parser.add_argument_group("output")
+    out.add_argument("--report", metavar="FILE.csv",
+                     help="write a CSV report of what was found and done")
+    out.add_argument("--language", default=i18n.DEFAULT_LANGUAGE,
+                     choices=sorted(i18n.LANGUAGES),
+                     help="language of messages and report headers")
+    out.add_argument("--quiet", action="store_true", help="only report problems")
+    out.add_argument("--verbose", action="store_true", help="one line per file")
+
+    return parser
+
+
+def collect_targets(args, reporter: Reporter) -> list[core.FileInfo]:
+    """Everything the run should consider replacing."""
+    by_content = bool(args.reference)
+    targets: list[core.FileInfo] = []
+
+    def walk_error(path: str, exc: Exception) -> None:
+        reporter.problem(f"  cannot read {path}: {exc}")
+
+    exclude = [args.source] if core.is_within(args.source, args.scan) else []
+
+    if by_content:
+        reporter.say("Searching by image content...")
+        hits = core.scan_by_content(
+            args.scan, args.reference, threshold=args.similarity / 100.0,
+            pattern=args.pattern, exclude_dirs=exclude, on_error=walk_error,
+            progress=lambda d, t: reporter.progress("compared", d, t),
+        )
+        targets.extend(core.FileInfo.from_path(path, similarity=score)
+                       for path, score in hits)
+    elif args.pattern:
+        reporter.say(f"Searching by name: {args.pattern}")
+        for path in core.scan_files(args.scan, args.pattern,
+                                    exclude_dirs=exclude, on_error=walk_error):
+            try:
+                targets.append(core.FileInfo.from_path(path))
+            except OSError as exc:
+                reporter.problem(f"  cannot read {path}: {exc}")
+
+    if args.office:
+        reporter.say("Looking inside Office documents...")
+        targets.extend(core.scan_office_documents(
+            args.scan,
+            references=args.reference if by_content else (),
+            threshold=args.similarity / 100.0,
+            exclude_dirs=exclude, on_error=walk_error,
+            progress=lambda d, t: reporter.progress("documents", d, t),
+        ))
+
+    return targets
+
+
+def check_safety(args, matches: list[core.Match], reporter: Reporter) -> int | None:
+    """
+    Refuse a writing run that a human would have been expected to review.
+
+    Returns an exit code to stop with, or None to carry on. Only applies with
+    `--apply`: a dry run is exactly how you find these out.
+    """
+    if not args.apply:
+        return None
+
+    uncertain = [m for m in matches if m.target.needs_review]
+    if len(uncertain) > args.max_uncertain:
+        reporter.problem(
+            f"Refusing to write: {len(uncertain)} hits are below "
+            f"{int(core.SIMILARITY_CONFIDENT * 100)}% similarity and nobody is "
+            f"here to look at them (--max-uncertain is {args.max_uncertain})."
+        )
+        for match in uncertain[:10]:
+            reporter.problem(f"  {match.target.similarity_str}  {match.target.name}")
+        if len(uncertain) > 10:
+            reporter.problem(f"  ... and {len(uncertain) - 10} more")
+        reporter.problem("Raise --similarity, review them in the interface, or "
+                         "raise --max-uncertain deliberately.")
+        return EXIT_REFUSED
+
+    if not args.allow_distortion:
+        distorting = [m for m in matches if m.distorts]
+        if distorting:
+            reporter.problem(
+                f"Refusing to write: {len(distorting)} replacements would stretch "
+                "the picture, because inside a document the frame keeps its own "
+                "proportions."
+            )
+            for match in distorting[:10]:
+                reporter.problem(f"  {match.target.name}: "
+                                 f"{match.target.dim_str} -> {match.source_dim_str}")
+            reporter.problem("Use matching proportions, or --allow-distortion.")
+            return EXIT_REFUSED
+
+    return None
+
+
+def run_restore(args, reporter: Reporter) -> int:
+    backups = core.find_backups(args.scan)
+    if not backups:
+        reporter.say(f"No backup found in {args.scan}")
+        return EXIT_NOTHING_FOUND
+
+    distinct = len({core.backup_origin(b) for b in backups})
+    reporter.say(f"Restoring {distinct} files from {len(backups)} backups...")
+
+    if not args.apply:
+        reporter.say("Dry run: nothing was restored. Add --apply to do it.")
+        return EXIT_OK
+
+    report = core.restore_backups(
+        args.scan, progress=lambda d, t, o: reporter.progress("restored", d, t))
+    reporter.say(f"Restored: {report.ok}, errors: {report.errors}")
+    return EXIT_ERRORS if report.errors else EXIT_OK
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    i18n.set_language(args.language)
+    reporter = Reporter(quiet=args.quiet, verbose=args.verbose)
+
+    if not args.scan:
+        parser.error("--scan is required")
+    if args.restore:
+        if not os.path.isdir(args.scan):
+            reporter.problem(f"Not a folder: {args.scan}")
+            return EXIT_BAD_REQUEST
+        return run_restore(args, reporter)
+
+    if not args.source:
+        parser.error("--source is required (or use --restore)")
+    if not args.pattern and not args.reference and not args.office:
+        parser.error("give at least one of --pattern, --reference or --office")
+
+    problems = core.validate_config(args.source, args.scan, args.pattern,
+                                    require_pattern=not (args.reference or args.office))
+    if args.reference:
+        problems += core.validate_references(args.reference)
+    if problems:
+        for problem in problems:
+            reporter.problem(problem)
+        return EXIT_BAD_REQUEST
+
+    for warning in core.config_warnings(args.source, args.scan):
+        reporter.say(f"Note: {warning}")
+
+    # --- find ---
+    targets = collect_targets(args, reporter)
+    if not targets:
+        reporter.say("Nothing matched.")
+        return EXIT_NOTHING_FOUND
+
+    embedded = sum(1 for target in targets if target.embedded)
+    reporter.say(f"Found {len(targets)} files"
+                 + (f" ({embedded} inside documents)" if embedded else ""))
+
+    # --- pair ---
+    sources = [core.FileInfo.from_path(path)
+               for path in core.collect_source_files(args.source)]
+    if not sources:
+        reporter.problem(f"No image in the source folder: {args.source}")
+        return EXIT_BAD_REQUEST
+
+    matches = core.build_matches(targets, sources,
+                                 progress=lambda d, t: reporter.progress("paired", d, t))
+    usable = [match for match in matches if match.source is not None]
+    unmatched = len(matches) - len(usable)
+    reporter.say(f"Paired {len(usable)} of {len(matches)}"
+                 + (f", {unmatched} without a match" if unmatched else ""))
+
+    for match in usable:
+        reporter.detail(f"  {match.target.name} <- {match.source_name} "
+                        f"[{match.quality_label}]")
+
+    if not usable:
+        reporter.say("Nothing to replace.")
+        _write_report(args, matches, reporter)
+        return EXIT_NOTHING_FOUND
+
+    refusal = check_safety(args, usable, reporter)
+    if refusal is not None:
+        _write_report(args, matches, reporter)
+        return refusal
+
+    # --- replace ---
+    dry_run = not args.apply
+    reporter.say("Simulating..." if dry_run else "Replacing...")
+
+    report = core.replace_all(
+        usable, backup=not args.no_backup, dry_run=dry_run,
+        progress=lambda d, t, o: reporter.progress("processed", d, t),
+    )
+
+    for outcome in report.outcomes:
+        if outcome.status == "error":
+            reporter.problem(f"  failed: {outcome.target}: {outcome.message}")
+        elif outcome.status == "skipped":
+            reporter.detail(f"  skipped: {outcome.target}: {outcome.message}")
+
+    reporter.say(f"{'Would replace' if dry_run else 'Replaced'}: {report.ok}, "
+                 f"skipped: {report.skipped}, errors: {report.errors}")
+    if dry_run:
+        reporter.say("Dry run: nothing was written. Add --apply to do it.")
+
+    _write_report(args, matches, reporter, report)
+    return EXIT_ERRORS if report.errors else EXIT_OK
+
+
+def _write_report(args, matches, reporter: Reporter,
+                  report: core.ReplaceReport | None = None) -> None:
+    if not args.report:
+        return
+    try:
+        if report is not None and report.outcomes:
+            core.export_report_csv(report, args.report)
+        else:
+            core.export_matches_csv(matches, args.report)
+        reporter.say(f"Report written to {args.report}")
+    except OSError as exc:
+        reporter.problem(f"Could not write the report: {exc}")
+
+
+def entry_point() -> int:
+    """Wrapper that turns an interruption into the conventional exit code."""
+    # The progress output carries no emoji, but core messages might, and a
+    # Windows console defaults to a legacy code page.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+    try:
+        return main()
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return EXIT_INTERRUPTED
+
+
+if __name__ == "__main__":
+    sys.exit(entry_point())

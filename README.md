@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-Available-green.svg)](#license--commercial-licensing)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-191-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-225-brightgreen.svg)](#development)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -51,18 +51,19 @@ settings are left untouched). Regenerate after a UI change with
 5. [Search patterns](#search-patterns)
 6. [Content search](#content-search)
 7. [Office documents](#office-documents)
-8. [Matching algorithm](#matching-algorithm)
-9. [Safety model](#safety-model)
-10. [Backup and restore](#backup-and-restore)
-11. [CSV reports](#csv-reports)
-12. [Languages](#languages)
-13. [Files and folders](#files-and-folders)
-14. [Building a standalone executable](#building-a-standalone-executable)
-15. [Development](#development)
-16. [Requirements](#requirements)
-17. [Scope and limitations](#scope-and-limitations)
-18. [License & Commercial Licensing](#license--commercial-licensing)
-19. [Disclaimer](#disclaimer)
+8. [Command line and unattended runs](#command-line-and-unattended-runs)
+9. [Matching algorithm](#matching-algorithm)
+10. [Safety model](#safety-model)
+11. [Backup and restore](#backup-and-restore)
+12. [CSV reports](#csv-reports)
+13. [Languages](#languages)
+14. [Files and folders](#files-and-folders)
+15. [Building a standalone executable](#building-a-standalone-executable)
+16. [Development](#development)
+17. [Requirements](#requirements)
+18. [Scope and limitations](#scope-and-limitations)
+19. [License & Commercial Licensing](#license--commercial-licensing)
+20. [Disclaimer](#disclaimer)
 
 ---
 
@@ -78,6 +79,12 @@ Proteus automates the finding and the pairing, but deliberately **keeps the huma
 in the loop**: nothing is written until you have seen each proposed pairing, and every
 pairing carries a quality grade telling you where the automation is confident and where it
 is guessing.
+
+When there is no human to keep in the loop — a nightly job, a deployment pipeline, twenty
+branch-office shares — the [command line](#command-line-and-unattended-runs) replaces that
+supervision with explicit rules rather than dropping it: still a dry run by default, and it
+refuses to write when a match is not certain.
+
 
 ---
 
@@ -111,6 +118,12 @@ is guessing.
 - **Dry run** that performs every check and produces the full log without touching a file
 - **One-click restore** from the backups, always reverting to the pre-rebranding original
 - Cancellable at any point, with visible progress — designed for slow network shares
+
+**Automating**
+- A **command line** covering everything the interface does, so the same campaign can run
+  as a scheduled task, a cron job or a pipeline step
+- **Unattended by design**: a run writes nothing unless asked, refuses on uncertain matches,
+  and returns an exit code the scheduler can act on
 
 **Reporting**
 - CSV export of the proposed matches and of the replacement outcome
@@ -149,6 +162,12 @@ python main.py
 |---|---|
 | Windows | `run.bat` |
 | Linux / macOS | `./run.sh` |
+
+Any argument switches to the [command line](#command-line-and-unattended-runs) instead:
+
+```bash
+python main.py --help
+```
 
 ---
 
@@ -332,6 +351,135 @@ certainly sized to it when the image was first inserted.
 
 ---
 
+## Command line and unattended runs
+
+Everything the interface does is also available without one. Pass any argument and Proteus
+runs as a command-line tool instead of opening a window — same entry point, same logic,
+no window server needed:
+
+```bash
+python main.py --scan /srv/intranet --source ./new-logos --pattern "logo*.png"
+```
+
+That command **changes nothing**. A run is a dry run unless you add `--apply`, because the
+default has to be the safe one when nobody is watching the screen.
+
+```bash
+python main.py --scan /srv/intranet --source ./new-logos \
+               --pattern "logo*.png" --apply --report campaign.csv
+```
+
+### Why this exists
+
+The interface asks you to look at each pairing before it writes. That is exactly right when
+a person is present, and useless in three situations:
+
+| Situation | What the interface cannot do |
+|---|---|
+| Nightly job on a file server | Nobody is there to click ④ *Replace* |
+| A build or deployment pipeline | No display, and a failure must stop the pipeline |
+| Twenty branch-office shares | The same campaign, repeated by hand twenty times |
+
+**Unattended** simply means "runs to completion with no human in front of it": a scheduled
+task, a cron job, a pipeline step. The safety a person would provide — noticing a wrong
+pairing before it is written — has to be encoded in the arguments instead.
+
+### The safety model, without a human
+
+Three rules replace the operator's eyes. All three can be overridden, but only deliberately:
+
+| Rule | Default | Override |
+|---|---|---|
+| Nothing is written | Dry run | `--apply` |
+| An uncertain hit refuses the whole run | 0 tolerated | `--max-uncertain N` |
+| A replacement that would stretch a picture in a document refuses the run | forbidden | `--allow-distortion` |
+
+An **uncertain hit** is a content-search match below 95% similarity — the ones the interface
+would colour for review. Name-based matches are never uncertain: you asked for that pattern
+explicitly.
+
+A refusal is not a silent no-op. The offending files are listed, the CSV report is still
+written if you asked for one, and the exit code says why.
+
+### Exit codes
+
+The whole point of a scheduled job: the scheduler must be able to tell what happened.
+
+| Code | Meaning |
+|---|---|
+| `0` | Done — or a dry run that found work |
+| `1` | Finished, but some replacements failed |
+| `2` | Nothing matched |
+| `3` | Bad request: missing or invalid arguments, unreadable folder |
+| `4` | Refused on safety grounds — uncertain hits or a distortion |
+| `130` | Interrupted (Ctrl-C) |
+
+`2` is deliberately not an error. A weekly job finding nothing left to rebrand has succeeded.
+
+### Options
+
+```
+what to scan
+  --scan FOLDER            folder to search for files to replace
+  --source FOLDER          folder holding the new logos
+
+how to find it
+  --pattern GLOB           wildcard, e.g. "logo*.png"; several separated by ";"
+  --reference IMAGE...     one or more copies of the OLD logo — content search
+  --similarity PCT         minimum visual similarity for --reference (default 90)
+  --office                 also look inside .docx/.pptx/.xlsx documents
+
+what to do
+  --apply                  actually write. Without it nothing is modified.
+  --no-backup              do not keep a .bak of each original (not advised)
+  --restore                restore originals from their backups and exit
+
+safety
+  --max-uncertain N        tolerate at most N hits below 95% similarity
+  --allow-distortion       allow replacements that would stretch a picture
+
+output
+  --report FILE.csv        CSV of what was found and done
+  --language {en,it}       language of messages and report headers
+  --quiet                  only report problems
+  --verbose                one line per file
+```
+
+`--restore` is a dry run by default too, and it also honours `--apply`.
+
+### Scheduling it
+
+Progress goes to stdout, problems to stderr, so redirecting the two separately gives you a
+log and an alert channel:
+
+```bash
+# /etc/cron.d/rebranding — every Sunday at 03:00
+0 3 * * 0 rebrand /opt/proteus/run.sh --scan /srv/shares --source /srv/brand/2026 \
+    --reference /srv/brand/old-logo.png --office --apply \
+    --report /var/log/proteus/$(date +\%F).csv >>/var/log/proteus/run.log 2>&1
+```
+
+```powershell
+# Windows Task Scheduler
+schtasks /create /tn "Rebranding" /sc weekly /d SUN /st 03:00 /tr `
+  "C:\Proteus\proteus-cli.exe --scan \\fs01\shares --source C:\Brand\2026 --pattern logo*.png --apply"
+```
+
+On Windows use **`proteus-cli.exe`**, not `Proteus.exe`. The interface binary is built
+`--windowed` and therefore has no console at all: it would run correctly but print nothing,
+leaving a failed job undiagnosable. The two binaries share one entry point and differ only
+in that.
+
+### Trying it safely
+
+The honest way to adopt this is in three steps, and the exit code tells you when to move on:
+
+1. `--verbose` with no `--apply` — read every proposed pairing.
+2. Add `--report` and open the CSV.
+3. Add `--apply`. Keep backups; `--restore` undoes the campaign.
+
+---
+
 ## Matching algorithm
 
 For each file to replace, candidates are filtered and then ranked.
@@ -386,6 +534,7 @@ Bulk-overwriting files on a shared drive deserves care. The guarantees are:
 | A replacement silently distorting a picture in a document | Aspect ratios compared, mismatches coloured and counted in the summary |
 | A document rewritten while several of its pictures change | Grouped per document: rewritten once, backed up once, atomically |
 | Unsure about a whole campaign | Dry run reproduces the entire operation without writing |
+| Nobody watching an automated run | The command line is a dry run unless `--apply`, and refuses to write when any hit is uncertain or would distort |
 | Wrong replacement already applied | Restore from backups reverts to the pre-rebranding state |
 | Long scan on an unresponsive share | Cancellable, with per-folder error reporting rather than a hard abort |
 
@@ -448,6 +597,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── rebranding_tool.py            # Tkinter interface
 ├── i18n.py                       # Translation layer and language catalogues
 ├── office.py                     # Reading and rewriting pictures inside OOXML packages
+├── cli.py                        # Command line and unattended runs
 ├── build.py                      # PyInstaller build
 ├── app.ico                       # Application icon (generated)
 ├── assets/generate_icon.py       # Regenerates app.ico
@@ -458,7 +608,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 191 tests (logic, GUI, i18n, build, content, office)
+├── tests/                        # 225 tests (logic, GUI, i18n, build, content, office, CLI)
 ├── LICENSE                       # AGPL-3.0
 └── CLA.md                        # Contributor License Agreement
 ```
@@ -479,9 +629,17 @@ rotate at 2 MB, keeping five files.
 python build.py
 ```
 
-On Windows, `compile.bat` does the same. The result is a single-file
-`dist/Proteus.exe` (~21 MB), with the icon embedded and a `logs/` folder prepared
-alongside it.
+On Windows, `compile.bat` does the same. The result is **two** single-file binaries in
+`dist/`, with the icon embedded and a `logs/` folder prepared alongside them:
+
+| Binary | Built | For |
+|---|---|---|
+| `Proteus.exe` (~21 MB) | `--windowed` | The interface |
+| `proteus-cli.exe` | `--console` | Scripts and scheduled jobs |
+
+They share one entry point and differ only in that flag. The split is not cosmetic: a
+`--windowed` executable has no console on Windows, so a CLI run through it would print
+nothing at all and a failed job could not be diagnosed.
 
 The build script installs anything missing, picks the right `--add-data` separator for the
 platform, and falls back to the running interpreter when the Windows `py` launcher is not
@@ -498,7 +656,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **191 tests** across six files:
+The suite is **225 tests** across seven files:
 
 | File | Covers |
 |---|---|
@@ -508,6 +666,7 @@ The suite is **191 tests** across six files:
 | `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
 | `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
 | `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups and aspect-ratio guarding |
+| `tests/test_cli.py` | Every exit code, the safety refusals and their overrides, reports, restore, output control and entry-point dispatch |
 
 GUI tests run headless and are skipped automatically where no display exists. A `conftest`
 fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`
@@ -562,7 +721,10 @@ previews or read resolutions, and says so on the configuration tab.
   the restore button are for.
 - **`os.replace` is atomic only within one filesystem.** The temporary file is created in
   the target's own folder, so this holds in practice, including on mapped network drives.
-- The Windows executable is built and published by CI; local builds have been verified on
+- **The command line trades review for rules.** Its refusals are threshold-based; they
+  catch an uncertain match, not a confidently wrong one. A first campaign is still worth
+  running through the interface, or at least as a dry run with `--report`.
+- The Windows executables are built and published by CI; local builds have been verified on
   Linux.
 
 ---
