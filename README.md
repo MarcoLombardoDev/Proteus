@@ -1,9 +1,9 @@
 # 🖼️ Proteus - Rebranding Tool
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Commercial License Available](https://img.shields.io/badge/Commercial%20License-Available-green.svg)](#license--commercial-licensing)
+[![Commercial License Available](https://img.shields.io/badge/Commercial%20License-from%20%E2%82%AC450%2Fyear-green.svg)](COMMERCIAL-LICENSE.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-225-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-233-brightgreen.svg)](#development)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -35,10 +35,29 @@ error-prone: it is very easy to drop a 1920×600 banner where a 32×32 favicon b
 | **③ Matches** — proposed pairings, quality grade, before/after preview | **④ Replacement** — summary, backup and dry-run options, live log |
 | ![Matches tab](docs/screenshots/03_matches.png) | ![Replacement tab](docs/screenshots/04_replacement.png) |
 
+Row 7 in tabs ② and ③ is worth a look: `annual_report.docx!/image1.png` is a picture
+**embedded in a Word document**, found and paired like any loose file. No wildcard would
+have reached it.
+
+**① in content-search mode** — no pattern at all, just a copy of the old logo:
+
+![Content search configuration](docs/screenshots/05_content_search.png)
+
+**The command line**, on the same sample data — a dry run, a refusal, and the applied
+campaign:
+
+![Command line session](docs/screenshots/06_command_line.png)
+
+The middle run is the one to read. It found the logo inside the document, but two of the
+hits were below 95% similarity, so it **refused to write anything and exited 4** — naming
+both files and how to proceed deliberately. That is what "unattended" has to look like
+when nobody is watching the screen.
+
 <sub>Generated with [`docs/generate_screenshots.py`](docs/generate_screenshots.py), which boots
 the real app under Xvfb against sample data in a temporary folder (no network, and your own
-settings are left untouched). Regenerate after a UI change with
-`xvfb-run -a python docs/generate_screenshots.py`.</sub>
+settings are left untouched). The terminal image is not a mock-up either: the script runs
+the real command line and draws its actual output, exit codes included. Regenerate after a
+UI change with `xvfb-run -a python docs/generate_screenshots.py`.</sub>
 
 ---
 
@@ -608,8 +627,9 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 225 tests (logic, GUI, i18n, build, content, office, CLI)
+├── tests/                        # 233 tests (logic, GUI, i18n, build, content, office, CLI, docs)
 ├── LICENSE                       # AGPL-3.0
+├── COMMERCIAL-LICENSE.md         # Commercial terms and price list
 └── CLA.md                        # Contributor License Agreement
 ```
 
@@ -656,7 +676,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **225 tests** across seven files:
+The suite is **233 tests** across eight files:
 
 | File | Covers |
 |---|---|
@@ -667,6 +687,7 @@ The suite is **225 tests** across seven files:
 | `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
 | `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups and aspect-ratio guarding |
 | `tests/test_cli.py` | Every exit code, the safety refusals and their overrides, reports, restore, output control and entry-point dispatch |
+| `tests/test_docs.py` | Screenshots referenced and shown, the price list agreeing with itself, and the AGPL text left verbatim |
 
 GUI tests run headless and are skipped automatically where no display exists. A `conftest`
 fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`
@@ -681,6 +702,11 @@ To regenerate the artwork or the documentation images:
 python assets/generate_icon.py
 pip install mss && xvfb-run -a python docs/generate_screenshots.py
 ```
+
+The screenshot script needs `mss`, and `python-docx` for the Office sample document — it
+skips that one file with a message rather than failing if the library is absent. The
+terminal image is produced by running the real command line and drawing its output, so it
+cannot drift out of step with the code.
 
 ---
 
@@ -747,17 +773,35 @@ Proteus is open-source software released under the
 
 ### Commercial Licensing
 
-If you need to use Proteus in a **proprietary application**, a **closed-source
-service**, or an **enterprise deployment** without being bound by the AGPL-3.0 copyleft
-requirements, a **commercial license** is available.
+Full terms: **[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)**.
 
-A commercial license grants you the right to:
+**Most organisations do not need to buy anything.** Internal business use of the
+unmodified tool is free, permanently, at any company size — the AGPL asks for source only
+when you *distribute* the software or let others use a modified version over a network.
+Buy a commercial licence when the AGPL's distribution terms are the problem, not because
+you are a company.
 
-- embed Proteus in closed-source software,
-- run it as part of a service without disclosing your source code,
-- use it in commercial products without AGPL obligations.
+| Tier | Price | Grants |
+|---|---:|---|
+| **Community** | **€0** | AGPL-3.0. Unlimited internal use. |
+| **Startup** | **€450 / year** | Under 10 employees and €1M revenue. One product, closed-source embedding. |
+| **Business** | **€1,900 / year** | Up to three products or services, hosted deployment, support in 5 business days. |
+| **Enterprise** | **€5,900 / year** | Unlimited products, SaaS and redistribution, support in 2 business days. |
+| **OEM / perpetual** | **from €14,000** one-off | Perpetual rights for one product line, priced per case. |
 
-For commercial licensing enquiries, please open an issue on this repository.
+Prices are per organisation, excluding VAT. **Seats are never counted.** Extras — support
+for AGPL users, priority feature work, white-label builds — are listed in
+[§3 of the commercial licence](COMMERCIAL-LICENSE.md#3-price-list).
+
+Every version released while a subscription is active stays licensed to you **forever**;
+letting it lapse stops new versions, it does not stop the ones you have.
+
+There is **no licence key, no activation and no phone-home**: the software is identical
+whether or not you have paid, and compliance is contractual. A tool that overwrites files
+on a production share has no business also containing a network client or a kill switch.
+
+To buy, open an issue titled `Commercial licence enquiry` — see
+[§4, How to buy](COMMERCIAL-LICENSE.md#4-how-to-buy).
 
 ### Contributing
 

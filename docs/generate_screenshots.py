@@ -42,13 +42,18 @@ DEFAULT_SHOTDIR = os.path.join(PROJECT_ROOT, "docs", "screenshots")
 OLD_COLOUR = (196, 62, 58)
 NEW_COLOUR = (38, 92, 168)
 
-#: One entry per screenshot: (file name, tab index, extra settle time).
+#: One entry per screenshot: (file name, tab index).
 SHOTS = (
     ("01_configuration", 0),
     ("02_scan_results", 1),
     ("03_matches", 2),
     ("04_replacement", 3),
+    ("05_content_search", 0),
 )
+
+#: The command-line capture is not a window: it is the real output of a real
+#: run, rendered as a terminal. See `render_terminal`.
+CLI_SHOT = "06_command_line"
 
 
 def build_sample_tree(root: str) -> tuple[str, str]:
@@ -101,17 +106,163 @@ def build_sample_tree(root: str) -> tuple[str, str]:
     png(source, "logo_press.jpeg", (300, 100), NEW_COLOUR)
     svg(source, "logo_vector.svg", 500, 200)
 
+    # A Word document with the same logo embedded in it — where a logo usually
+    # hides in real life, and the one case a file-name search cannot reach.
+    _sample_document(os.path.join(scan, "reports", "annual_report.docx"),
+                     os.path.join(scan, "website", "logo_header.png"))
+
+    # A reference copy of the OLD logo, for the content-search screenshot. It
+    # lives outside the scanned tree, as a real one would.
+    png(os.path.join(root, "reference"), "old_logo.png", (240, 80), OLD_COLOUR)
+
     return scan, source
 
 
-def capture(path: str) -> None:
-    """Grab the whole virtual screen into `path`."""
+def _sample_document(path: str, image: str) -> bool:
+    """
+    Build a small .docx around `image`, if python-docx is installed.
+
+    Optional on purpose: the capture is still useful without it, and the
+    library is a test dependency rather than a runtime one. Proteus itself
+    reads and rewrites these packages with the standard library alone — the
+    library is used here only to produce a document Word would really open.
+    """
+    try:
+        import docx
+        from docx.shared import Inches
+    except ImportError:
+        print("  (python-docx not installed: skipping the Office sample)")
+        return False
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    document = docx.Document()
+    document.add_picture(image, width=Inches(2.4))
+    document.add_heading("Annual Report", level=1)
+    document.add_paragraph(
+        "The logo above is embedded in the document, not linked. A file-name "
+        "search cannot see it; Proteus can.")
+    document.save(path)
+    return True
+
+
+def capture(path: str, window=None) -> None:
+    """
+    Grab the virtual screen into `path`, cropped to `window` when given.
+
+    Without the crop the PNG carries whatever unused desktop the virtual screen
+    happens to have — on a 1280×1024 Xvfb that is a wide black margin below the
+    window, which is both ugly and a waste of the reader's screen.
+    """
     import mss
     from PIL import Image
 
     with mss.mss() as sct:
         shot = sct.grab(sct.monitors[1])
-        Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX").save(path)
+        image = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+
+    if window is not None:
+        box = (window.winfo_rootx(), window.winfo_rooty(),
+               window.winfo_rootx() + window.winfo_width(),
+               window.winfo_rooty() + window.winfo_height())
+        # Clamp: a window may legitimately extend past the virtual screen.
+        box = (max(box[0], 0), max(box[1], 0),
+               min(box[2], image.width), min(box[3], image.height))
+        if box[2] > box[0] and box[3] > box[1]:
+            image = image.crop(box)
+
+    image.save(path)
+
+
+# ---------------------------------------------------------------------------
+# The command line
+# ---------------------------------------------------------------------------
+
+#: Terminal colours. Dark, because that is what a terminal looks like, and
+#: because it distinguishes the CLI shot from the interface ones at a glance.
+TERM_BG = (24, 26, 32)
+TERM_FG = (208, 212, 220)
+TERM_PROMPT = (108, 176, 116)
+TERM_COMMAND = (232, 236, 242)
+TERM_ALERT = (226, 116, 106)
+TERM_DIM = (128, 134, 148)
+
+
+def _mono_font(size: int):
+    """A monospaced face, whatever this machine happens to have."""
+    from PIL import ImageFont
+
+    candidates = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+        "/Library/Fonts/Menlo.ttc",
+        "C:\\Windows\\Fonts\\consola.ttf",
+    )
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return ImageFont.truetype(candidate, size)
+    # Falls back to the bitmap font: ugly, but never crashes the docs build.
+    return ImageFont.load_default()
+
+
+def run_cli(workdir: str, *args: str) -> list[tuple[str, str]]:
+    """
+    Run the real command line and return its transcript.
+
+    Each entry is (kind, text) where kind is prompt / out / err, so the
+    renderer can colour stderr differently — which is the whole point of the
+    screenshot: showing that a refusal is loud.
+    """
+    import subprocess
+
+    shown = " ".join(a.replace(workdir + os.sep, "").replace(workdir, ".")
+                     for a in args)
+    lines: list[tuple[str, str]] = [("prompt", f"proteus {shown}")]
+
+    result = subprocess.run(
+        [sys.executable, os.path.join(PROJECT_ROOT, "main.py"), *args],
+        capture_output=True, text=True, cwd=workdir,
+    )
+    for stream, kind in ((result.stdout, "out"), (result.stderr, "err")):
+        for line in stream.splitlines():
+            lines.append((kind, line.replace(workdir + os.sep, "")
+                                    .replace(workdir, ".")))
+    lines.append(("exit", f"$? = {result.returncode}"))
+    return lines
+
+
+def render_terminal(path: str, blocks: list[list[tuple[str, str]]]) -> None:
+    """Draw captured transcripts as a terminal window."""
+    from PIL import Image, ImageDraw
+
+    font = _mono_font(15)
+    bold = _mono_font(15)
+    pad, leading = 24, 22
+
+    lines = [line for block in blocks for line in (*block, ("gap", ""))][:-1]
+    height = pad * 2 + leading * len(lines)
+
+    probe = Image.new("RGB", (1, 1))
+    char = ImageDraw.Draw(probe).textlength("M", font=font) or 8
+    # Width from the longest line actually captured. Hardcoding it silently
+    # truncated the one line most worth reading — the refusal.
+    width = max(len(text) for _kind, text in lines) + 4
+    image = Image.new("RGB", (int(pad * 2 + char * width), height), TERM_BG)
+    draw = ImageDraw.Draw(image)
+
+    y = pad
+    for kind, text in lines:
+        if kind == "prompt":
+            draw.text((pad, y), "$", font=bold, fill=TERM_PROMPT)
+            draw.text((pad + char * 2, y), text, font=bold, fill=TERM_COMMAND)
+        elif kind == "err":
+            draw.text((pad, y), text, font=font, fill=TERM_ALERT)
+        elif kind == "exit":
+            draw.text((pad, y), text, font=font, fill=TERM_DIM)
+        elif kind != "gap":
+            draw.text((pad, y), text, font=font, fill=TERM_FG)
+        y += leading
+
+    image.save(path)
 
 
 def main(argv: list[str]) -> int:
@@ -143,11 +294,13 @@ def main(argv: list[str]) -> int:
         core.writable_app_dir = lambda sub: _ensure(os.path.join(workdir, sub))
 
         scan, source = build_sample_tree(workdir)
+        reference = os.path.join(workdir, "reference", "old_logo.png")
         core.save_settings({
             "language": args.language,
             "source_folder": source,
             "scan_folder": scan,
             "search_pattern": "logo*",
+            "include_office": True,
             "backup": True,
             "dry_run": False,
         })
@@ -191,13 +344,48 @@ def main(argv: list[str]) -> int:
 
         _shoot(app, root, args.outdir, "04_replacement", 3, settle)
 
+        # Back to tab ①, this time set up for a content search: the mode that
+        # finds a logo hiding under a name no wildcard would guess.
+        app._search_mode.set("content")
+        app._references = [reference]
+        app._on_search_mode_changed()
+        app._refresh_references_label()
+        app.search_pattern.set("")
+        settle(0.4)
+        _shoot(app, root, args.outdir, "05_content_search", 0, settle)
+
         print(f"{len(SHOTS)} screenshots written to {args.outdir} "
               f"(language: {i18n.get_language()})")
         root.destroy()
+
+        # The command line has no window: its transcript is captured by
+        # running it for real and drawing the output.
+        shoot_command_line(workdir, scan, source, reference, args.outdir)
         return 0
 
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+def shoot_command_line(workdir: str, scan: str, source: str,
+                       reference: str, outdir: str) -> None:
+    """
+    Capture three real runs: a dry run, a refusal, and the applied campaign.
+
+    The middle one is the reason this screenshot exists. A refusal has to be
+    legible in a log nobody reads until something has gone wrong, so it is
+    worth showing what one actually looks like.
+    """
+    common = ["--scan", scan, "--source", source]
+    blocks = [
+        run_cli(workdir, *common, "--pattern", "logo*.png", "--verbose"),
+        run_cli(workdir, *common, "--reference", reference,
+                "--similarity", "70", "--office", "--apply"),
+        run_cli(workdir, *common, "--pattern", "logo*.png", "--apply"),
+    ]
+    path = os.path.join(outdir, f"{CLI_SHOT}.png")
+    render_terminal(path, blocks)
+    print(f"  captured {CLI_SHOT}.png")
 
 
 def _ensure(path: str) -> str:
@@ -208,7 +396,7 @@ def _ensure(path: str) -> str:
 def _shoot(app, root, outdir: str, name: str, tab: int, settle) -> None:
     app.notebook.select(tab)
     settle(0.4)
-    capture(os.path.join(outdir, f"{name}.png"))
+    capture(os.path.join(outdir, f"{name}.png"), window=root)
     print(f"  captured {name}.png")
 
 
