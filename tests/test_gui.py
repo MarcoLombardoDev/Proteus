@@ -668,3 +668,164 @@ def test_closing_stops_the_ui_pump(app, monkeypatch):
     # A later pump must return immediately instead of rescheduling itself.
     app._pump_ui_queue()
     assert app._pump_after_id is None
+
+
+# ---------------------------------------------------------------------------
+# Content search
+# ---------------------------------------------------------------------------
+
+def _logo(path, size=(240, 80), colour=(196, 62, 58)):
+    """A mark with enough structure to hash consistently."""
+    from PIL import ImageDraw
+
+    path = str(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    image = Image.new("RGB", size, (255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    w, h = size
+    draw.ellipse((w * 0.04, h * 0.15, w * 0.32, h * 0.85), fill=colour)
+    draw.rectangle((w * 0.38, h * 0.30, w * 0.94, h * 0.48), fill=colour)
+    draw.rectangle((w * 0.38, h * 0.56, w * 0.72, h * 0.72), fill=(90, 90, 90))
+    image.save(path)
+    return path
+
+
+def test_search_mode_toggles_the_relevant_controls(app):
+    assert app._searching_by_content() is False
+    assert str(app._btn_references.cget("state")) == "disabled"
+
+    app._search_mode.set("content")
+    app._on_search_mode_changed()
+
+    assert app._searching_by_content() is True
+    assert str(app._btn_references.cget("state")) == "normal"
+    assert str(app._similarity_spin.cget("state")) == "normal"
+
+
+def test_content_search_finds_logos_no_pattern_would_catch(app, tmp_path, monkeypatch):
+    """The feature's whole point, exercised through the real interface."""
+    scan = tmp_path / "share"
+    source = tmp_path / "new_logos"
+    _logo(scan / "web" / "header_bg.png", (240, 80))     # hidden under a bland name
+    _logo(scan / "docs" / "img_04.jpg", (120, 40))       # and another
+    make_image(scan / "docs" / "chart.png", (100, 100))  # unrelated: must not match
+    _logo(source / "brand.png", (240, 80), (20, 90, 170))
+    reference = _logo(tmp_path / "ref" / "old_logo.png")
+
+    app.source_folder.set(str(source))
+    app.scan_folder.set(str(scan))
+    app.search_pattern.set("")
+    app._search_mode.set("content")
+    app._references = [reference]
+    app._on_search_mode_changed()
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *a, **k: None)
+
+    app._start_scan()
+    _run_workers(app)
+
+    found = sorted(f.name for f in app.scanned_files)
+    assert found == ["header_bg.png", "img_04.jpg"]
+    assert all(f.similarity is not None for f in app.scanned_files)
+    # And a name-based search would have found nothing at all.
+    assert core.scan_files(str(scan), "logo*") == []
+
+
+def test_scan_tree_shows_similarity_and_flags_uncertain_rows(app, tmp_path, monkeypatch):
+    scan = tmp_path / "share"
+    source = tmp_path / "new_logos"
+    target = _logo(scan / "header_bg.png")
+    _logo(source / "brand.png", colour=(20, 90, 170))
+    reference = _logo(tmp_path / "ref.png")
+
+    app.source_folder.set(str(source))
+    app.scan_folder.set(str(scan))
+    app.search_pattern.set("")
+    app._search_mode.set("content")
+    app._references = [reference]
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *a, **k: None)
+
+    app._start_scan()
+    _run_workers(app)
+
+    assert app._scan_tree.set(target, "sim") == "100%"
+    assert "review" not in app._scan_tree.item(target, "tags")
+
+    # An uncertain hit must be coloured, because it is the one case where the
+    # tool could overwrite an unrelated image.
+    app.scanned_files[0].similarity = 0.91
+    app._populate_scan_tree(announce=False)
+    assert "review" in app._scan_tree.item(target, "tags")
+
+
+def test_content_search_requires_a_reference_image(app, tmp_path, monkeypatch):
+    scan = tmp_path / "share"
+    source = tmp_path / "new_logos"
+    make_image(scan / "a.png")
+    make_image(source / "a.png")
+
+    app.source_folder.set(str(source))
+    app.scan_folder.set(str(scan))
+    app._search_mode.set("content")
+    app._references = []
+
+    shown = {}
+    monkeypatch.setattr("tkinter.messagebox.showerror",
+                        lambda title, msg, *a, **k: shown.update(msg=msg))
+    app._start_scan()
+
+    assert "reference image" in shown.get("msg", "")
+    assert not app._busy(), "the scan must not start without a reference"
+
+
+def test_empty_pattern_is_allowed_only_in_content_mode(app, tmp_path, monkeypatch):
+    """In content search an empty pattern legitimately means "every image"."""
+    scan = tmp_path / "share"
+    source = tmp_path / "new_logos"
+    make_image(scan / "a.png")
+    make_image(source / "a.png")
+    reference = _logo(tmp_path / "ref.png")
+
+    app.source_folder.set(str(source))
+    app.scan_folder.set(str(scan))
+    app.search_pattern.set("")
+
+    shown = {}
+    monkeypatch.setattr("tkinter.messagebox.showerror",
+                        lambda title, msg, *a, **k: shown.update(msg=msg))
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *a, **k: None)
+
+    app._search_mode.set("name")
+    app._start_scan()
+    assert shown.get("msg"), "an empty pattern must be rejected in name mode"
+
+    shown.clear()
+    app._search_mode.set("content")
+    app._references = [reference]
+    app._start_scan()
+    _run_workers(app)
+    assert not shown, "an empty pattern is valid in content mode"
+
+
+def test_reference_selection_is_persisted(app, tmp_path):
+    reference = _logo(tmp_path / "ref.png")
+    app._search_mode.set("content")
+    app._references = [reference]
+    app._similarity_var.set(93)
+    app._save_settings()
+
+    stored = core.load_settings()
+    assert stored["search_mode"] == "content"
+    assert stored["references"] == [reference]
+    assert stored["similarity"] == 93
+
+
+def test_references_label_summarises_the_selection(app, tmp_path):
+    app._references = []
+    app._refresh_references_label()
+    assert "No reference" in app._references_label.cget("text")
+
+    app._references = [_logo(tmp_path / f"r{i}.png") for i in range(5)]
+    app._refresh_references_label()
+    text = app._references_label.cget("text")
+    assert text.startswith("5 chosen:")
+    assert text.endswith("...")

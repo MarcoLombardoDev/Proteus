@@ -71,6 +71,35 @@ _IT: dict[str, str] = {
         "Cartella (e sottocartelle) dove cercare i file da sostituire "
         "(es. server, share di rete):",
     " SEARCH KEY ": " CHIAVE DI RICERCA ",
+    "Search by:": "Cerca per:",
+    "File name": "Nome file",
+    "Image content": "Contenuto immagine",
+    "Find images that look like the reference ones, whatever they are called.\n"
+    "Raster formats only: SVG, PDF and EPS cannot be matched by content.":
+        "Trova immagini simili a quelle di riferimento, comunque si chiamino.\n"
+        "Solo formati raster: SVG, PDF ed EPS non sono confrontabili per contenuto.",
+    "Reference images:": "Immagini di riferimento:",
+    "Choose images...": "Scegli immagini...",
+    "No reference image chosen": "Nessuna immagine di riferimento",
+    "{count} chosen: {names}": "{count} scelte: {names}",
+    "Select the old logo, in one or more versions":
+        "Seleziona il vecchio logo, in una o piu' versioni",
+    "Minimum similarity:": "Somiglianza minima:",
+    "Similarity": "Somiglianza",
+    "Searching by content... {done}/{total}":
+        "Ricerca per contenuto... {done}/{total}",
+    "Content search started — folder: {folder} | references: {count} | "
+    "threshold: {threshold}%":
+        "Ricerca per contenuto avviata — cartella: {folder} | riferimenti: {count} | "
+        "soglia: {threshold}%",
+    "{count} files found by content — {sources} sources available":
+        "{count} file trovati per contenuto — {sources} sorgenti disponibili",
+    "\u26a0  {count} of them are below {threshold}% similarity: look at those "
+    "before replacing.":
+        "\u26a0  {count} sono sotto il {threshold}% di somiglianza: guardali prima "
+        "di sostituire.",
+    "orange = found by content, below the confident threshold":
+        "arancio = trovato per contenuto, sotto la soglia di confidenza",
     "Wildcard pattern (* = many characters, ? = one character). "
     "Separate multiple patterns with «;».\n"
     "Examples: logo*.png  |  banner_*.jpg  |  icon_??.svg  |  logo*.png; logo*.svg":
@@ -82,18 +111,6 @@ _IT: dict[str, str] = {
     "unavailable. Install it with: pip install pillow":
         "⚠️  Pillow (PIL) non è installato: anteprime e risoluzioni non saranno "
         "disponibili. Installa con: pip install pillow",
-    " HOW IT WORKS ": " COME FUNZIONA ",
-    "①  Configuration — choose the folder with the new logos, the folder to\n"
-    "     scan, and a search pattern such as logo*.png.":
-        "①  Configurazione — scegli la cartella con i nuovi loghi, quella da\n"
-        "     scansionare e un pattern di ricerca come logo*.png.",
-    "②  Scan results — check which files were found before going further.":
-        "②  Risultati scansione — controlla i file individuati prima di procedere.",
-    "③  Matches — review every proposed pairing; exclude or override any of them.":
-        "③  Corrispondenze — verifica ogni abbinamento proposto; escludilo o "
-        "cambialo.",
-    "④  Replacement — run it, with a backup or as a dry run first.":
-        "④  Sostituzione — esegui, con backup o prima come simulazione.",
     "🔍  START SCAN": "🔍  AVVIA SCANSIONE",
     "Clear fields": "Pulisci campi",
     "Open log folder": "Apri cartella log",
@@ -349,6 +366,12 @@ _IT: dict[str, str] = {
 
     # -- core.py: validation ----------------------------------------------
     "Enter at least one search pattern.": "Inserisci almeno un pattern di ricerca.",
+    "Choose at least one reference image to search by content.":
+        "Scegli almeno un'immagine di riferimento per cercare per contenuto.",
+    "None of the reference images can be read. Vector formats (SVG) and "
+    "documents (PDF, EPS) cannot be matched by content.":
+        "Nessuna immagine di riferimento e' leggibile. I formati vettoriali (SVG) "
+        "e i documenti (PDF, EPS) non sono confrontabili per contenuto.",
     "Pattern «{pattern}» contains a path separator: give the file name only "
     "(e.g. logo*.png).":
         "Il pattern «{pattern}» contiene un separatore di percorso: indica solo "
