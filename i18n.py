@@ -85,6 +85,16 @@ _IT: dict[str, str] = {
     "Select the old logo, in one or more versions":
         "Seleziona il vecchio logo, in una o piu' versioni",
     "Minimum similarity:": "Somiglianza minima:",
+    "Also look inside Office documents (.docx, .pptx, .xlsx)":
+        "Cerca anche dentro i documenti Office (.docx, .pptx, .xlsx)",
+    "Scanning documents... {done}/{total}":
+        "Scansione documenti... {done}/{total}",
+    "Pictures found inside documents: {count}":
+        "Immagini trovate dentro i documenti: {count}",
+    "\n\u26a0  {count} replacements would stretch the picture: inside "
+    "a document the frame keeps its own proportions.":
+        "\n\u26a0  {count} sostituzioni deformerebbero l'immagine: dentro "
+        "un documento la cornice mantiene le proprie proporzioni.",
     "Similarity": "Somiglianza",
     "Searching by content... {done}/{total}":
         "Ricerca per contenuto... {done}/{total}",

@@ -829,3 +829,99 @@ def test_references_label_summarises_the_selection(app, tmp_path):
     text = app._references_label.cget("text")
     assert text.startswith("5 chosen:")
     assert text.endswith("...")
+
+
+# ---------------------------------------------------------------------------
+# Office documents
+# ---------------------------------------------------------------------------
+
+def test_office_documents_flow_through_the_whole_wizard(app, tmp_path, monkeypatch):
+    """Scan, match and replace a logo living inside a .docx, via the real UI."""
+    docx = pytest.importorskip("docx", reason="python-docx is needed")
+    from PIL import ImageDraw
+
+    def mark(path, size=(240, 80), colour=(196, 62, 58)):
+        path = str(path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        image = Image.new("RGB", size, (255, 255, 255))
+        draw = ImageDraw.Draw(image)
+        w, h = size
+        draw.ellipse((w * .04, h * .15, w * .32, h * .85), fill=colour)
+        draw.rectangle((w * .38, h * .30, w * .94, h * .48), fill=colour)
+        draw.rectangle((w * .38, h * .56, w * .72, h * .72), fill=(90, 90, 90))
+        image.save(path)
+        return path
+
+    scan = tmp_path / "share"
+    source = tmp_path / "new_logos"
+    old = mark(tmp_path / "brand" / "old.png")
+    mark(source / "brand.png", colour=(20, 90, 170))
+
+    document = docx.Document()
+    document.add_picture(old)
+    os.makedirs(str(scan), exist_ok=True)
+    doc_path = str(scan / "report.docx")
+    document.save(doc_path)
+
+    app.source_folder.set(str(source))
+    app.scan_folder.set(str(scan))
+    app.search_pattern.set("logo*.png")      # matches nothing on disk
+    app._include_office.set(True)
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *a, **k: None)
+    monkeypatch.setattr("tkinter.messagebox.showwarning", lambda *a, **k: None)
+    monkeypatch.setattr("tkinter.messagebox.askyesno", lambda *a, **k: True)
+
+    app._start_scan()
+    _run_workers(app)
+
+    assert len(app.scanned_files) == 1
+    found = app.scanned_files[0]
+    assert found.embedded and found.container == doc_path
+    assert found.dim == (240, 80)
+
+    # The preview must reach inside the package.
+    app._scan_tree.selection_set(found.path)
+    app.root.update()
+    assert "scan" in app._image_refs, "an embedded picture must still preview"
+
+    app._start_matching()
+    _run_workers(app)
+    assert app.matches[0].source is not None
+
+    app._dry_run_var.set(False)
+    app._backup_var.set(True)
+    app._execute_replacement()
+    _run_workers(app)
+
+    import office
+    entry = office.list_images(doc_path)[0].entry
+    temp = office.extract_to_temp(doc_path, entry)
+    try:
+        assert Image.open(temp).convert("RGB").getpixel((60, 40)) == (20, 90, 170)
+    finally:
+        os.remove(temp)
+    assert os.path.exists(doc_path + ".bak")
+
+
+def test_a_distorting_replacement_is_flagged(app, tmp_path):
+    """A square logo bound for a 3:1 frame must be called out, not silently applied."""
+    import office
+
+    target = core.FileInfo(path="r.docx!/word/media/image1.png", name="image1.png",
+                           ext=".png", size=100, dim=(240, 80),
+                           container="r.docx", entry="word/media/image1.png")
+    square = core.FileInfo(path="s.png", name="s.png", ext=".png",
+                           size=100, dim=(200, 200))
+    same = core.FileInfo(path="w.png", name="w.png", ext=".png",
+                         size=100, dim=(480, 160))
+
+    assert core.Match(target=target, source=square, enabled=True).distorts is True
+    assert core.Match(target=target, source=same, enabled=True).distorts is False
+
+    app.matches = [core.Match(target=target, source=square, enabled=True)]
+    app._match_by_path = {target.path: app.matches[0]}
+    assert app._row_tag(app.matches[0]) == "weak"
+
+    app._refresh_replace_summary()
+    assert "stretch" in app._replace_summary_lbl.cget("text")
+    assert office.aspect_mismatch((240, 80), (200, 200))

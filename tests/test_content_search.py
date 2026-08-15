@@ -341,3 +341,41 @@ def test_validate_references_rejects_empty_and_unusable(tmp_path):
 
     usable = save(logo_image(), tmp_path / "ref.png")
     assert core.validate_references([usable]) == []
+
+
+# ---------------------------------------------------------------------------
+# Colour blindness: measured, not assumed
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("colour,label", [
+    ((30, 140, 60), "green"),
+    ((20, 90, 170), "blue"),
+    ((10, 10, 10), "black"),
+])
+def test_recolouring_still_matches(tmp_path, colour, label):
+    """
+    The same silhouette in a different colour still matches, and that is worth
+    pinning down because it cuts both ways.
+
+    A difference hash encodes luminance *gradients*, and the shape is what
+    creates them. Useful — a logo is found across its colourways — but also the
+    main source of false positives: two unrelated marks with similar
+    silhouettes will match too. It is why the default threshold is strict and
+    why every hit is previewed before anything is overwritten.
+    """
+    reference = save(logo_image(), tmp_path / "ref.png")
+    recoloured = save(logo_image(colour=colour), tmp_path / f"{label}.png")
+
+    score = core.hash_similarity(core.perceptual_hash(reference),
+                                 core.perceptual_hash(recoloured))
+    assert score >= core.DEFAULT_SIMILARITY
+
+
+def test_a_different_shape_is_what_breaks_the_match(tmp_path):
+    """Layout, not colour, is what the hash actually discriminates on."""
+    reference = save(logo_image(), tmp_path / "ref.png")
+    different = save(other_image(), tmp_path / "bands.png")
+
+    score = core.hash_similarity(core.perceptual_hash(reference),
+                                 core.perceptual_hash(different))
+    assert score < core.DEFAULT_SIMILARITY
