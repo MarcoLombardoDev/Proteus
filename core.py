@@ -55,14 +55,26 @@ APP_SLUG = "Proteus"
 APP_AUTHOR = "Marco Lombardo"
 APP_COPYRIGHT_YEAR = "2026"
 
+#: Where commercial licensing enquiries go. Single source of truth: the
+#: interface, the README and COMMERCIAL-LICENSE.md must never disagree.
+CONTACT_EMAIL = "marco.lombardo@gmail.com"
+
 #: Legal notice shown in the application footer. Kept in English in every
 #: language: it is a licence notice, not interface copy. Displaying it also
 #: satisfies the "Appropriate Legal Notices" requirement of AGPL-3.0 section 5.
+#:
+#: It ends on a colon because the interface appends CONTACT_EMAIL as a
+#: separate, clickable label. Whoever is running the application is exactly
+#: the person who might need to buy a commercial licence, and "available on
+#: request" tells them nothing about how to ask.
 LICENSE_NOTICE = (
     f"© {APP_COPYRIGHT_YEAR} {APP_AUTHOR} — {APP_NAME}"
     "  |  Licensed under AGPL-3.0"
-    "  |  Commercial licensing available"
+    "  |  Commercial licensing:"
 )
+
+#: Subject line pre-filled when the footer address is clicked.
+LICENSE_EMAIL_SUBJECT = f"{APP_NAME} — commercial licence enquiry"
 
 #: File types treated as images when collected from the source folder.
 SUPPORTED_FORMATS = frozenset({

@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-from%20%E2%82%AC250%2Fyear-green.svg)](COMMERCIAL-LICENSE.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-237-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-241-brightgreen.svg)](#development)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -148,7 +148,8 @@ refuses to write when a match is not certain.
 - CSV export of the proposed matches and of the replacement outcome
 - Rotating log files, with a fallback location when the application folder is read-only
 - A permanent licence notice in the window footer, satisfying the "Appropriate Legal
-  Notices" requirement of AGPL-3.0 section 5
+  Notices" requirement of AGPL-3.0 section 5 — with the licensing address spelled out and
+  clickable, since the person running the tool is the one who might need to buy a licence
 
 ---
 
@@ -627,7 +628,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 237 tests (logic, GUI, i18n, build, content, office, CLI, docs)
+├── tests/                        # 241 tests (logic, GUI, i18n, build, content, office, CLI, docs)
 ├── LICENSE                       # AGPL-3.0
 ├── COMMERCIAL-LICENSE.md         # Commercial terms and price list
 └── CLA.md                        # Contributor License Agreement
@@ -676,7 +677,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **237 tests** across eight files:
+The suite is **241 tests** across eight files:
 
 | File | Covers |
 |---|---|
