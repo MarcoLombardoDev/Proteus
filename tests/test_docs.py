@@ -120,6 +120,26 @@ def test_the_commercial_terms_do_not_contradict_the_agpl_on_internal_use():
     assert "internal business use of the unmodified tool is free" in terms
 
 
+CONTACT = "marco.lombardo@gmail.com"
+
+
+@pytest.mark.parametrize("document", ["README.md", "COMMERCIAL-LICENSE.md", "CLA.md"])
+def test_a_buyer_can_find_a_way_to_get_in_touch(document):
+    """A price list nobody can respond to is decoration."""
+    assert CONTACT in read(document)
+
+
+def test_no_placeholder_survived_into_the_published_terms():
+    """
+    Regression: the contact address started life as a marked placeholder. A
+    price list shipped with `(to be published)` still in it is worse than one
+    with no price list at all.
+    """
+    terms = read("COMMERCIAL-LICENSE.md").lower()
+    for placeholder in ("to be published", "tbd", "todo", "xxx", "your-domain"):
+        assert placeholder not in terms, f"placeholder left in the terms: {placeholder!r}"
+
+
 @pytest.mark.parametrize("document", ["README.md", "COMMERCIAL-LICENSE.md", "CLA.md"])
 def test_licensing_documents_are_reachable_from_the_readme(document):
     assert os.path.exists(os.path.join(REPO, document))

@@ -32,7 +32,8 @@ any size.** A vendor telling you otherwise about an AGPL project is mistaken. Bu
 commercial licence when the AGPL's *distribution* terms are the problem — not simply
 because you are a company.
 
-If you are unsure which column you are in, ask before you buy. See §9.
+If you are unsure which column you are in, ask before you buy —
+**marco.lombardo@gmail.com**, and see §9.
 
 ---
 
@@ -91,9 +92,9 @@ developer or per installation.
 
 ## 4. How to buy
 
-1. **Ask.** Open a GitHub issue titled `Commercial licence enquiry` on the
-   [Proteus repository](https://github.com/MarcoLombardoDev/Proteus), or write to the
-   address in §9. Say what you intend to build and roughly how big your organisation is.
+1. **Ask.** Write to **marco.lombardo@gmail.com**. Say what you intend to build and
+   roughly how big your organisation is. Email rather than a public issue: what you are
+   building is usually not something you want indexed.
 2. **Confirm the tier.** You get a written statement of which tier applies and why, so
    there is no ambiguity later.
 3. **Invoice.** Issued in EUR, payable by bank transfer within 30 days.
@@ -174,12 +175,15 @@ commercial licence to Proteus for their own use, as thanks.
 
 ## 9. Contact
 
-Commercial licensing enquiries: open an issue titled `Commercial licence enquiry` on the
-[Proteus repository](https://github.com/MarcoLombardoDev/Proteus/issues).
+**Commercial licensing enquiries: [marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com)**
 
-<!-- Replace with a real address before publishing a price list you intend to honour:
-     a public issue is a poor channel for a purchase order. -->
-Direct enquiries: _(licensing address to be published)_
+Write directly. Purchase orders, company names and what you intend to build are nobody
+else's business, and a GitHub issue is public.
+
+For anything that is *not* a purchase — a question about which column of §1 you fall into,
+a bug, a feature request — the
+[issue tracker](https://github.com/MarcoLombardoDev/Proteus/issues) is the better channel,
+and the answer helps whoever asks next.
 
 ---
 
