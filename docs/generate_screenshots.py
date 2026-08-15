@@ -59,7 +59,7 @@ def build_sample_tree(root: str) -> tuple[str, str]:
     jpg/jpeg cross-match, an SVG whose size comes from the markup, a weak match
     and a file with no counterpart at all.
     """
-    from PIL import Image
+    from PIL import Image, ImageDraw
 
     scan = os.path.join(root, "share")
     source = os.path.join(root, "new_logos")
@@ -67,7 +67,15 @@ def build_sample_tree(root: str) -> tuple[str, str]:
     def png(folder: str, name: str, size, colour):
         path = os.path.join(folder, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        Image.new("RGB", size, colour).save(path)
+        # A mark rather than a flat block: content search needs internal
+        # structure to hash, and a flat rectangle has none.
+        image = Image.new("RGB", size, (255, 255, 255))
+        draw = ImageDraw.Draw(image)
+        w, h = size
+        draw.ellipse((w * 0.04, h * 0.15, w * 0.32, h * 0.85), fill=colour)
+        draw.rectangle((w * 0.38, h * 0.30, w * 0.94, h * 0.48), fill=colour)
+        draw.rectangle((w * 0.38, h * 0.56, w * 0.72, h * 0.72), fill=(120, 120, 120))
+        image.save(path)
 
     def svg(folder: str, name: str, width: int, height: int):
         path = os.path.join(folder, name)
@@ -76,13 +84,16 @@ def build_sample_tree(root: str) -> tuple[str, str]:
             fh.write('<svg xmlns="http://www.w3.org/2000/svg" '
                      f'width="{width}px" height="{height}px"/>')
 
-    # Files to be replaced.
+    # Files to be replaced. The last three deliberately carry names no
+    # wildcard would guess: they exist to show off content search.
     png(scan, "website/logo_header.png", (240, 80), OLD_COLOUR)
     png(scan, "website/logo_footer.png", (120, 40), OLD_COLOUR)
     png(scan, "intranet/logo_small.png", (64, 64), OLD_COLOUR)   # weak match
     png(scan, "print/logo_press.jpg", (300, 100), OLD_COLOUR)    # jpg -> jpeg
     png(scan, "legacy/logo_orphan.gif", (50, 50), OLD_COLOUR)    # no match
     svg(scan, "web/logo_vector.svg", 500, 200)
+    png(scan, "web/header_bg.png", (240, 80), OLD_COLOUR)
+    png(scan, "archive/PROGETTO2014.png", (480, 160), OLD_COLOUR)
 
     # New logos.
     png(source, "logo_header.png", (240, 80), NEW_COLOUR)

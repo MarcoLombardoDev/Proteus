@@ -97,6 +97,23 @@ WEIGHT_NAME = 0.35
 QUALITY_GOOD = 0.10
 QUALITY_FAIR = 0.35
 
+#: Side of the grayscale grid used for perceptual hashing. 8 gives a 64-bit
+#: hash, the usual trade-off between discrimination and tolerance to rescaling.
+HASH_SIDE = 8
+
+#: Background composited under transparent pixels before hashing. Without it,
+#: the same logo saved with and without an alpha channel hashes differently,
+#: which is precisely the case a rebranding has to catch.
+HASH_MATTE = (255, 255, 255)
+
+#: Default similarity above which a file is considered a hit in content search.
+#: Deliberately strict: this tool overwrites files, so a false positive
+#: destroys an unrelated image. Lower it knowingly, not by default.
+DEFAULT_SIMILARITY = 0.90
+
+#: Below this, a content hit is shown but flagged as needing human eyes.
+SIMILARITY_CONFIDENT = 0.95
+
 #: Name-similarity threshold used when resolutions cannot be determined
 #: (PDF, EPS, corrupted files).
 NAME_ONLY_GOOD = 0.80
@@ -289,6 +306,141 @@ def size_diff(dim1: tuple[int, int] | None, dim2: tuple[int, int] | None) -> flo
     return ((w1 - w2) ** 2 + (h1 - h2) ** 2) ** 0.5
 
 
+# ---------------------------------------------------------------------------
+# Perceptual hashing
+# ---------------------------------------------------------------------------
+
+def _prepare_for_hash(image) -> "Image.Image":
+    """
+    Flatten an image to a grayscale grid suitable for hashing.
+
+    Transparency is composited onto a fixed matte first: the same logo exported
+    once with an alpha channel and once flattened must hash the same, otherwise
+    content search misses exactly the duplicates it exists to find.
+    """
+    if image.mode in ("RGBA", "LA", "P"):
+        image = image.convert("RGBA")
+        background = Image.new("RGBA", image.size, HASH_MATTE + (255,))
+        image = Image.alpha_composite(background, image)
+
+    # One extra column: dHash compares each pixel with its right-hand neighbour.
+    return image.convert("L").resize((HASH_SIDE + 1, HASH_SIDE),
+                                     Image.Resampling.LANCZOS)
+
+
+def perceptual_hash(filepath: str) -> int | None:
+    """
+    64-bit difference hash of an image, or None if it cannot be read.
+
+    dHash encodes the *gradient* between neighbouring pixels rather than
+    absolute brightness, which makes it stable across rescaling, re-encoding
+    and moderate quality loss — the three things that happen to a logo as it
+    gets copied around an organisation. It is not stable across recolouring,
+    cropping or rotation; see the README for what that rules out.
+    """
+    if not PIL_AVAILABLE:
+        return None
+    if Path(filepath).suffix.lower() in NO_PIL_PREVIEW:
+        return None
+
+    try:
+        with Image.open(filepath) as image:
+            # The grid is mode "L", so its raw bytes are one grey level per
+            # pixel in row-major order. tobytes() also avoids Image.getdata(),
+            # which Pillow deprecates for removal in version 14.
+            pixels = _prepare_for_hash(image).tobytes()
+    except Exception:
+        return None
+
+    bits = 0
+    for row in range(HASH_SIDE):
+        offset = row * (HASH_SIDE + 1)
+        for column in range(HASH_SIDE):
+            bits <<= 1
+            if pixels[offset + column] > pixels[offset + column + 1]:
+                bits |= 1
+    return bits
+
+
+def hash_distance(hash_a: int, hash_b: int) -> int:
+    """Hamming distance between two perceptual hashes (0 = identical)."""
+    return bin(hash_a ^ hash_b).count("1")
+
+
+def hash_similarity(hash_a: int | None, hash_b: int | None) -> float:
+    """Similarity in [0..1] between two hashes; 0.0 when either is missing."""
+    if hash_a is None or hash_b is None:
+        return 0.0
+    bits = HASH_SIDE * HASH_SIDE
+    return 1.0 - hash_distance(hash_a, hash_b) / bits
+
+
+class HashCache:
+    """
+    Cache of perceptual hashes.
+
+    Content search compares every candidate against every reference, so without
+    a cache each candidate would be decoded once per reference.
+    """
+
+    def __init__(self) -> None:
+        self._cache: dict[str, int | None] = {}
+
+    def get(self, path: str) -> int | None:
+        if path not in self._cache:
+            self._cache[path] = perceptual_hash(path)
+        return self._cache[path]
+
+    def __len__(self) -> int:
+        return len(self._cache)
+
+
+def best_similarity(
+    path: str,
+    reference_hashes: Sequence[int],
+    cache: HashCache | None = None,
+) -> float:
+    """Highest similarity between `path` and any of the reference images."""
+    if not reference_hashes:
+        return 0.0
+    candidate = (cache.get(path) if cache is not None else perceptual_hash(path))
+    if candidate is None:
+        return 0.0
+    return max(hash_similarity(candidate, ref) for ref in reference_hashes)
+
+
+def reference_hashes(paths: Sequence[str]) -> list[int]:
+    """
+    Hashes of the reference images, skipping any that cannot be read.
+
+    Vector formats have no raster to hash, so an SVG reference silently
+    contributes nothing; `validate_references` reports that to the user.
+    """
+    hashes = []
+    for path in paths:
+        digest = perceptual_hash(path)
+        if digest is not None:
+            hashes.append(digest)
+    return hashes
+
+
+def validate_references(paths: Sequence[str]) -> list[str]:
+    """Problems that would make a content search useless. Empty when fine."""
+    problems: list[str] = []
+    if not paths:
+        problems.append(t("Choose at least one reference image to search by "
+                          "content."))
+        return problems
+
+    unreadable = [p for p in paths if perceptual_hash(p) is None]
+    if len(unreadable) == len(paths):
+        problems.append(
+            t("None of the reference images can be read. Vector formats (SVG) "
+              "and documents (PDF, EPS) cannot be matched by content.")
+        )
+    return problems
+
+
 def normalized_ext(path_or_ext: str) -> str:
     """
     Normalised extension used to compare formats.
@@ -313,6 +465,11 @@ class FileInfo:
     size: int
     dim: tuple[int, int] | None
 
+    #: Visual similarity to the closest reference image, when the file was
+    #: found by content search. None when it was found by file name, where the
+    #: notion does not apply.
+    similarity: float | None = None
+
     @property
     def fmt(self) -> str:
         """Uppercase format for display (`PNG`)."""
@@ -326,8 +483,23 @@ class FileInfo:
     def dim_str(self) -> str:
         return f"{self.dim[0]}×{self.dim[1]} px" if self.dim else t("N/A")
 
+    @property
+    def similarity_str(self) -> str:
+        return "—" if self.similarity is None else f"{self.similarity * 100:.0f}%"
+
+    @property
+    def needs_review(self) -> bool:
+        """
+        True for a content hit found below the confident threshold.
+
+        These are the rows a user must actually look at: the tool overwrites
+        files, so an uncertain visual match is the one way it could destroy an
+        unrelated image.
+        """
+        return self.similarity is not None and self.similarity < SIMILARITY_CONFIDENT
+
     @classmethod
-    def from_path(cls, path: str) -> "FileInfo":
+    def from_path(cls, path: str, similarity: float | None = None) -> "FileInfo":
         stat = os.stat(path)
         return cls(
             path=path,
@@ -335,6 +507,7 @@ class FileInfo:
             ext=Path(path).suffix.lower(),
             size=stat.st_size,
             dim=get_image_dimensions(path),
+            similarity=similarity,
         )
 
 
@@ -536,6 +709,85 @@ def scan_files(
                 results.append(os.path.join(root, fname))
 
     return sorted(results)
+
+
+def scan_by_content(
+    folder: str,
+    references: Sequence[str],
+    *,
+    threshold: float = DEFAULT_SIMILARITY,
+    pattern: str = "",
+    exclude_dirs: Iterable[str] = (),
+    skip_backups: bool = True,
+    progress: Callable[[int, int], None] | None = None,
+    cancel_event: threading.Event | None = None,
+    on_error: Callable[[str, Exception], None] | None = None,
+) -> list[tuple[str, float]]:
+    """
+    Find images that *look like* the reference ones, whatever they are called.
+
+    This is the answer to the hard half of a rebranding: the old logo is rarely
+    filed under `logo*.png`. It hides in `header_bg.png`, `img_04.jpg`, or a
+    folder someone named after a project from 2014.
+
+    `pattern` still applies when given, as a cheap pre-filter — narrowing by
+    name first avoids decoding every image in the tree.
+
+    Returns `(path, similarity)` pairs sorted by descending similarity, so the
+    most certain hits are reviewed first.
+    """
+    refs = reference_hashes(references)
+    if not refs:
+        return []
+
+    patterns = parse_patterns(pattern)
+    excluded = [os.path.realpath(d) for d in exclude_dirs if d]
+    reference_real = {os.path.realpath(p) for p in references}
+
+    def _walk_error(exc: OSError) -> None:
+        if on_error:
+            on_error(getattr(exc, "filename", folder) or folder, exc)
+
+    # Enumerate first so progress can be reported against a known total.
+    candidates: list[str] = []
+    for root, dirs, files in os.walk(folder, onerror=_walk_error, followlinks=False):
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelled()
+
+        real_root = os.path.realpath(root)
+        dirs[:] = [
+            d for d in dirs
+            if not any(is_within(os.path.join(real_root, d), ex) for ex in excluded)
+        ]
+
+        for fname in files:
+            if skip_backups and fname.lower().endswith(BACKUP_SUFFIX):
+                continue
+            ext = Path(fname).suffix.lower()
+            # Only raster formats can be hashed at all.
+            if ext in NO_PIL_PREVIEW or ext not in SUPPORTED_FORMATS:
+                continue
+            if patterns and not matches_patterns(fname, patterns):
+                continue
+            candidates.append(os.path.join(root, fname))
+
+    cache = HashCache()
+    hits: list[tuple[str, float]] = []
+    total = len(candidates)
+
+    for index, path in enumerate(sorted(candidates), 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelled()
+        # A reference image is not a target: it would be replaced by itself.
+        if os.path.realpath(path) not in reference_real:
+            score = best_similarity(path, refs, cache)
+            if score >= threshold:
+                hits.append((path, score))
+        if progress:
+            progress(index, total)
+
+    hits.sort(key=lambda item: (-item[1], item[0]))
+    return hits
 
 
 def collect_source_files(
@@ -939,6 +1191,9 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "source_folder": "",
     "scan_folder": "",
     "search_pattern": "logo*.png",
+    "search_mode": "name",
+    "references": [],
+    "similarity": int(DEFAULT_SIMILARITY * 100),
     "backup": True,
     "dry_run": False,
 }
@@ -961,6 +1216,14 @@ def load_settings() -> dict:
 
     if settings["language"] not in i18n.LANGUAGES:
         settings["language"] = i18n.DEFAULT_LANGUAGE
+    if settings["search_mode"] not in ("name", "content"):
+        settings["search_mode"] = "name"
+    if not isinstance(settings["references"], list):
+        settings["references"] = []
+    try:
+        settings["similarity"] = max(50, min(100, int(settings["similarity"])))
+    except (TypeError, ValueError):
+        settings["similarity"] = int(DEFAULT_SIMILARITY * 100)
     return settings
 
 
@@ -979,10 +1242,14 @@ def save_settings(values: dict) -> bool:
 # Configuration validation
 # ---------------------------------------------------------------------------
 
-def validate_config(source_folder: str, scan_folder: str, pattern: str) -> list[str]:
+def validate_config(source_folder: str, scan_folder: str, pattern: str,
+                    *, require_pattern: bool = True) -> list[str]:
     """
     Validate the scan configuration.
     Returns the list of blocking problems (empty when everything is fine).
+
+    `require_pattern` is False for content search, where the pattern is only an
+    optional pre-filter and an empty one legitimately means "every image".
     """
     problems: list[str] = []
 
@@ -991,9 +1258,10 @@ def validate_config(source_folder: str, scan_folder: str, pattern: str) -> list[
     if not scan_folder or not os.path.isdir(scan_folder):
         problems.append(t("Select a valid folder to scan."))
 
-    pattern_error = validate_pattern(pattern)
-    if pattern_error:
-        problems.append(pattern_error)
+    if require_pattern or pattern.strip():
+        pattern_error = validate_pattern(pattern)
+        if pattern_error:
+            problems.append(pattern_error)
 
     if (source_folder and scan_folder
             and os.path.isdir(source_folder) and os.path.isdir(scan_folder)):

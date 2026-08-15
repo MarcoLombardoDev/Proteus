@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-Available-green.svg)](#license--commercial-licensing)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-116-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-150-brightgreen.svg)](#development)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -49,18 +49,19 @@ settings are left untouched). Regenerate after a UI change with
 3. [Installation](#installation)
 4. [Usage](#usage)
 5. [Search patterns](#search-patterns)
-6. [Matching algorithm](#matching-algorithm)
-7. [Safety model](#safety-model)
-8. [Backup and restore](#backup-and-restore)
-9. [CSV reports](#csv-reports)
-10. [Languages](#languages)
-11. [Files and folders](#files-and-folders)
-12. [Building a standalone executable](#building-a-standalone-executable)
-13. [Development](#development)
-14. [Requirements](#requirements)
-15. [Scope and limitations](#scope-and-limitations)
-16. [License & Commercial Licensing](#license--commercial-licensing)
-17. [Disclaimer](#disclaimer)
+6. [Content search](#content-search)
+7. [Matching algorithm](#matching-algorithm)
+8. [Safety model](#safety-model)
+9. [Backup and restore](#backup-and-restore)
+10. [CSV reports](#csv-reports)
+11. [Languages](#languages)
+12. [Files and folders](#files-and-folders)
+13. [Building a standalone executable](#building-a-standalone-executable)
+14. [Development](#development)
+15. [Requirements](#requirements)
+16. [Scope and limitations](#scope-and-limitations)
+17. [License & Commercial Licensing](#license--commercial-licensing)
+18. [Disclaimer](#disclaimer)
 
 ---
 
@@ -82,6 +83,8 @@ is guessing.
 ## Features
 
 **Finding**
+- **Content search**: find the old logo by what it *looks like*, not by what it is
+  called — the half of a rebranding that wildcards cannot solve
 - Recursive search with wildcard patterns; multiple patterns at once (`logo*.png; logo*.svg`)
 - Case-insensitive matching, symlink/junction cycle protection, per-folder error reporting
   so an unreadable network share does not abort the whole scan
@@ -156,7 +159,10 @@ The application walks you through four tabs, in order.
 |---|---|
 | **Source folder** | Where the *new* logos live. Every supported image file in it becomes a replacement candidate. |
 | **Folder to scan** | The tree to search for files to replace. Scanned recursively. |
-| **Search key** | Wildcard pattern for the file names to replace, e.g. `logo*.png`. |
+| **Search by** | *File name* (wildcard pattern) or *Image content* (visual similarity). |
+| **Search key** | Wildcard pattern for the file names to replace, e.g. `logo*.png`. In content mode it is an optional pre-filter. |
+| **Reference images** | Content mode only: one or more copies of the *old* logo to search for. |
+| **Minimum similarity** | Content mode only: how close a match must be to count. Defaults to 90%. |
 | **Language** | English or Italian, applied immediately. |
 
 The tool refuses to start when the two folders are the same, and warns you when the source
@@ -165,7 +171,9 @@ automatically, so your new logos are never treated as targets).
 
 ### ② Scan results
 
-Every matching file with its format, weight and resolution. Select a row to preview it;
+Every matching file with its format, weight, resolution and — after a content search —
+its similarity to the reference. Rows below the confident threshold are orange. Select a
+row to preview it;
 double-click to open its containing folder. Columns are sortable, and sorting is
 type-aware — `2.0 MB` ranks above `900 KB`, and `10` after `2`.
 
@@ -209,6 +217,53 @@ Matching is case-insensitive, so `logo*.png` also finds `LOGO_Header.PNG`.
 
 Patterns that would select *every* file (`*`, `?`, or only wildcards) are rejected, as are
 patterns containing a path separator — the pattern applies to file names, not paths.
+
+---
+
+## Content search
+
+Wildcards solve the easy half of a rebranding. The hard half is the logo filed as
+`header_bg.png`, `img_04.jpg`, or something in a folder named after a project from 2014.
+No pattern finds those, because nobody named them after the brand.
+
+Switch **Search by** to *Image content*, point Proteus at one or more copies of the **old
+logo**, and it finds every image that looks like them — whatever the file is called.
+
+### How it works
+
+Each image is reduced to a 9×8 greyscale grid and encoded as a 64-bit **difference hash**:
+each pixel becomes one bit saying whether it is brighter than its right-hand neighbour.
+Two images are compared by Hamming distance over those 64 bits.
+
+Encoding the *gradient* rather than absolute brightness is what makes the hash survive the
+three things that happen to a logo as it travels around an organisation: **rescaling**,
+**re-encoding**, and **quality loss**. Transparency is flattened onto a fixed white matte
+first, so the same mark exported once with an alpha channel and once without still reads
+as itself.
+
+### What it will and will not find
+
+| | |
+|---|---|
+| Same logo at another size | ✅ tested from 60×20 to 960×320 |
+| Same logo in another format (PNG/JPEG/BMP/…) | ✅ |
+| Heavily re-compressed JPEG | ✅ tested down to quality 35 |
+| With or without an alpha channel | ✅ |
+| **Recoloured** logo | ❌ a different colourway hashes differently |
+| **Cropped or rotated** logo | ❌ |
+| Logo **inside** a document or a larger image | ❌ only whole image files are compared |
+| SVG, PDF, EPS | ❌ nothing to rasterise; use a pattern for those |
+
+### Why the threshold is strict
+
+**Minimum similarity** defaults to 90%, and that default is deliberate. Proteus overwrites
+files: a false positive here does not produce a wrong row in a list, it destroys an
+unrelated image. Lower it knowingly.
+
+Anything found below **95%** is shown in orange and reported in the log, because those are
+the rows a human actually needs to look at. The similarity of every hit is shown as a
+column and is sortable, and the pattern field still works as a pre-filter to narrow the
+search before any image is decoded.
 
 ---
 
@@ -262,6 +317,7 @@ Bulk-overwriting files on a shared drive deserves care. The guarantees are:
 | Source and target are the same file | Detected via `os.path.samefile` and skipped with an explicit message |
 | Source folder nested in the scanned tree | Excluded from the scan automatically |
 | Replacing a file with nothing | Rows without a match cannot be enabled |
+| Content search hitting an unrelated image | Strict default threshold, similarity shown per row, uncertain hits coloured and logged |
 | Unsure about a whole campaign | Dry run reproduces the entire operation without writing |
 | Wrong replacement already applied | Restore from backups reverts to the pre-rebranding state |
 | Long scan on an unresponsive share | Cancellable, with per-folder error reporting rather than a hard abort |
@@ -334,7 +390,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 116 tests (logic, GUI, i18n, build)
+├── tests/                        # 150 tests (logic, GUI, i18n, build, content)
 ├── LICENSE                       # AGPL-3.0
 └── CLA.md                        # Contributor License Agreement
 ```
@@ -374,7 +430,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **116 tests** across four files:
+The suite is **150 tests** across five files:
 
 | File | Covers |
 |---|---|
@@ -382,6 +438,7 @@ The suite is **116 tests** across four files:
 | `tests/test_gui.py` | Startup, the full wizard flow, dry run, row toggling, sorting, manual override, restore, language switching, shutdown |
 | `tests/test_i18n.py` | Translation layer, catalogue completeness and placeholder integrity |
 | `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
+| `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
 
 GUI tests run headless and are skipped automatically where no display exists. A `conftest`
 fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`
@@ -416,6 +473,9 @@ previews or read resolutions, and says so on the configuration tab.
 
 ## Scope and limitations
 
+- **Content search compares whole image files only.** It will not find a logo embedded
+  inside a Word or PowerPoint document, inside a PDF, or composited into a larger picture,
+  and it is blind to recolouring, cropping and rotation. Use a filename pattern for those.
 - **Previews and resolutions are unavailable for EPS and PDF.** Pillow cannot read them
   without Ghostscript. Files of those types can still be matched, graded by name
   similarity, and replaced.

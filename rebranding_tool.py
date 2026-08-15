@@ -77,7 +77,7 @@ MATCH_PREVIEW_SIZE = (90, 70)
 #: Columns sorted numerically rather than alphabetically.
 NUMERIC_COLUMNS = {"#"}
 #: Columns sorted by the real underlying value (weight, resolution).
-SORT_KEY_COLUMNS = {"size", "dim", "target_dim", "src_dim"}
+SORT_KEY_COLUMNS = {"size", "dim", "sim", "target_dim", "src_dim"}
 
 #: Upper bound on the in-memory log, kept so the language switch can rebuild
 #: the interface without losing what the user has already seen.
@@ -101,6 +101,10 @@ class RebrandingToolApp:
         self._backup_var = tk.BooleanVar(value=bool(settings["backup"]))
         self._dry_run_var = tk.BooleanVar(value=bool(settings["dry_run"]))
         self._language_var = tk.StringVar(value=i18n.language_name(i18n.get_language()))
+        self._search_mode = tk.StringVar(value=str(settings["search_mode"]))
+        self._similarity_var = tk.IntVar(value=int(settings["similarity"]))
+        self._references: list[str] = [r for r in settings["references"]
+                                       if os.path.isfile(r)]
 
         self.scanned_files: list[FileInfo] = []
         self.source_files: list[FileInfo] = []
@@ -470,13 +474,57 @@ class RebrandingToolApp:
                    "logo*.png; logo*.svg"),
             font=("Arial", 9), foreground="#555555", justify=tk.LEFT,
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(8, 2))
-        ttk.Label(key_frame, text=t("Pattern:")).grid(row=1, column=0, sticky=tk.W,
+        mode_row = ttk.Frame(key_frame)
+        mode_row.grid(row=1, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(2, 4))
+        ttk.Label(mode_row, text=t("Search by:")).pack(side=tk.LEFT, padx=(0, 8))
+        for value, label in (("name", t("File name")), ("content", t("Image content"))):
+            ttk.Radiobutton(mode_row, text=label, value=value,
+                            variable=self._search_mode,
+                            command=self._on_search_mode_changed).pack(side=tk.LEFT,
+                                                                      padx=(0, 12))
+
+        ttk.Label(key_frame, text=t("Pattern:")).grid(row=2, column=0, sticky=tk.W,
                                                       padx=8, pady=4)
         self._entry_pattern = ttk.Entry(key_frame, textvariable=self.search_pattern,
                                         width=40)
-        self._entry_pattern.grid(row=1, column=1, padx=4, pady=4, sticky=tk.W)
+        self._entry_pattern.grid(row=2, column=1, padx=4, pady=4, sticky=tk.W)
         self._entry_pattern.bind("<Return>", lambda _e: self._start_scan())
+
+        ttk.Label(
+            key_frame,
+            text=t("Find images that look like the reference ones, whatever they "
+                   "are called.\n"
+                   "Raster formats only: SVG, PDF and EPS cannot be matched by "
+                   "content."),
+            font=("Arial", 9), foreground="#555555", justify=tk.LEFT,
+        ).grid(row=3, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(6, 2))
+
+        ttk.Label(key_frame, text=t("Reference images:")).grid(row=4, column=0,
+                                                               sticky=tk.W, padx=8,
+                                                               pady=4)
+        ref_row = ttk.Frame(key_frame)
+        ref_row.grid(row=4, column=1, columnspan=2, sticky=tk.EW, padx=4, pady=4)
+        self._btn_references = ttk.Button(ref_row, text=t("Choose images..."),
+                                          command=self._choose_references,
+                                          **self.btn("outline"))
+        self._btn_references.pack(side=tk.LEFT)
+        self._references_label = ttk.Label(ref_row, text="", font=("Arial", 9),
+                                           foreground="#555555")
+        self._references_label.pack(side=tk.LEFT, padx=10)
+
+        ttk.Label(key_frame, text=t("Minimum similarity:")).grid(row=5, column=0,
+                                                                 sticky=tk.W, padx=8,
+                                                                 pady=4)
+        sim_row = ttk.Frame(key_frame)
+        sim_row.grid(row=5, column=1, sticky=tk.W, padx=4, pady=4)
+        self._similarity_spin = ttk.Spinbox(sim_row, from_=70, to=100, increment=1,
+                                            width=5, textvariable=self._similarity_var)
+        self._similarity_spin.pack(side=tk.LEFT)
+        ttk.Label(sim_row, text="%").pack(side=tk.LEFT, padx=(2, 0))
+
         key_frame.columnconfigure(1, weight=1)
+        self._refresh_references_label()
+        self._on_search_mode_changed()
 
         if not PIL_AVAILABLE:
             warn = ttk.Frame(parent)
@@ -504,30 +552,38 @@ class RebrandingToolApp:
         ttk.Button(btn_frame, text=t("Open log folder"), command=self._open_log_folder,
                    **self.btn("outline")).pack(side=tk.LEFT, padx=4)
 
-        # --- Workflow reminder, filling the space below the fields ---
-        self._build_workflow_panel(parent)
+    def _searching_by_content(self) -> bool:
+        return self._search_mode.get() == "content"
 
-    def _build_workflow_panel(self, parent: ttk.Frame):
-        """Short recap of the four steps, shown on the configuration tab."""
-        container = ttk.Frame(parent)
-        container.pack(fill=tk.BOTH, expand=True, padx=24, pady=10)
+    def _on_search_mode_changed(self):
+        """Enable only the controls belonging to the selected search mode."""
+        by_content = self._searching_by_content()
+        for widget in (self._btn_references, self._similarity_spin):
+            widget.config(state=tk.NORMAL if by_content else tk.DISABLED)
+        self._references_label.config(
+            foreground="#555555" if by_content else "#aaaaaa")
 
-        panel = ttk.LabelFrame(container, text=t(" HOW IT WORKS "))
-        panel.pack(fill=tk.X, anchor=tk.N)
-
-        steps = (
-            t("①  Configuration — choose the folder with the new logos, the "
-              "folder to\n     scan, and a search pattern such as logo*.png."),
-            t("②  Scan results — check which files were found before going "
-              "further."),
-            t("③  Matches — review every proposed pairing; exclude or override "
-              "any of them."),
-            t("④  Replacement — run it, with a backup or as a dry run first."),
+    def _choose_references(self):
+        chosen = filedialog.askopenfilenames(
+            title=t("Select the old logo, in one or more versions"),
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff "
+                                  "*.webp *.ico"),
+                       ("All files", "*.*")],
         )
-        for step in steps:
-            ttk.Label(panel, text=step, font=("Arial", 9), foreground="#555555",
-                      justify=tk.LEFT).pack(anchor=tk.W, padx=12, pady=3)
-        ttk.Frame(panel).pack(pady=4)
+        if chosen:
+            self._references = list(chosen)
+            self._refresh_references_label()
+
+    def _refresh_references_label(self):
+        if not self._references:
+            self._references_label.config(text=t("No reference image chosen"))
+            return
+        names = ", ".join(os.path.basename(r) for r in self._references[:3])
+        if len(self._references) > 3:
+            names += ", ..."
+        self._references_label.config(
+            text=t("{count} chosen: {names}").format(count=len(self._references),
+                                                     names=names))
 
     # ------------------------------------------------------------------
     # TAB 2 - SCAN RESULTS
@@ -552,7 +608,7 @@ class RebrandingToolApp:
         tree_frame = ttk.Frame(parent)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
-        columns = ("#", "name", "ext", "size", "dim", "path")
+        columns = ("#", "name", "ext", "size", "dim", "sim", "path")
         self._scan_tree = ttk.Treeview(tree_frame, columns=columns, show="headings",
                                        height=12, selectmode="extended")
         headers = {
@@ -561,7 +617,8 @@ class RebrandingToolApp:
             "ext":  (t("Format"), 70),
             "size": (t("Size"), 100),
             "dim":  (t("Resolution"), 120),
-            "path": (t("Full Path"), 460),
+            "sim":  (t("Similarity"), 90),
+            "path": (t("Full Path"), 420),
         }
         for col, (label, width) in headers.items():
             self._scan_tree.heading(
@@ -580,6 +637,10 @@ class RebrandingToolApp:
         tree_frame.rowconfigure(0, weight=1)
         tree_frame.columnconfigure(0, weight=1)
 
+        # A content hit below the confident threshold is the one case where the
+        # tool could overwrite an unrelated image, so it is coloured for review.
+        self._scan_tree.tag_configure("review", foreground="#b06a00")
+
         self._scan_tree.bind("<<TreeviewSelect>>", self._on_scan_select)
         self._scan_tree.bind("<Double-1>", self._on_scan_double_click)
 
@@ -593,6 +654,12 @@ class RebrandingToolApp:
                                        font=("Arial", 9), foreground="#888888",
                                        justify=tk.LEFT)
         self._preview_info.pack(side=tk.LEFT, padx=12, pady=6, anchor=tk.W)
+
+        legend = ttk.Frame(parent)
+        legend.pack(fill=tk.X, padx=8, pady=(2, 0))
+        ttk.Label(legend,
+                  text=t("orange = found by content, below the confident threshold"),
+                  font=("Arial", 8), foreground="#888888").pack(side=tk.LEFT)
 
         btn_frame = ttk.Frame(parent)
         btn_frame.pack(fill=tk.X, padx=8, pady=8)
@@ -948,6 +1015,9 @@ class RebrandingToolApp:
             "source_folder": self.source_folder.get().strip(),
             "scan_folder": self.scan_folder.get().strip(),
             "search_pattern": self.search_pattern.get().strip(),
+            "search_mode": self._search_mode.get(),
+            "references": list(self._references),
+            "similarity": int(self._similarity_var.get()),
             "backup": self._backup_var.get(),
             "dry_run": self._dry_run_var.get(),
         })
@@ -1002,7 +1072,10 @@ class RebrandingToolApp:
         scan = self.scan_folder.get().strip()
         pattern = self.search_pattern.get().strip()
 
-        problems = core.validate_config(source, scan, pattern)
+        problems = core.validate_config(source, scan, pattern,
+                                        require_pattern=not self._searching_by_content())
+        if self._searching_by_content():
+            problems += core.validate_references(self._references)
         if problems:
             messagebox.showerror(t("Invalid configuration"), "\n\n".join(problems))
             return
@@ -1022,12 +1095,22 @@ class RebrandingToolApp:
         self._match_count_lbl.config(text="")
         self.notebook.select(1)
 
-        self._start_worker(self._scan_worker, (source, scan, pattern),
-                           t("Scanning..."))
+        self._start_worker(
+            self._scan_worker,
+            (source, scan, pattern, self._searching_by_content(),
+             list(self._references), int(self._similarity_var.get())),
+            t("Scanning..."),
+        )
 
-    def _scan_worker(self, source: str, scan: str, pattern: str):
-        self.log(t("Scan started — folder: {folder} | pattern: {pattern}").format(
-            folder=scan, pattern=pattern))
+    def _scan_worker(self, source: str, scan: str, pattern: str,
+                     by_content: bool, references: list[str], threshold: int):
+        if by_content:
+            self.log(t("Content search started — folder: {folder} | "
+                       "references: {count} | threshold: {threshold}%").format(
+                folder=scan, count=len(references), threshold=threshold))
+        else:
+            self.log(t("Scan started — folder: {folder} | pattern: {pattern}").format(
+                folder=scan, pattern=pattern))
         self.log(t("Source logo folder: {folder}").format(folder=source))
 
         def walk_error(path: str, exc: Exception):
@@ -1041,8 +1124,28 @@ class RebrandingToolApp:
         # The source folder, when nested inside the scanned one, must be
         # excluded: otherwise the new logos would be treated as targets.
         exclude = [source] if core.is_within(source, scan) else []
-        found = core.scan_files(scan, pattern, exclude_dirs=exclude,
-                                cancel_event=self._cancel_event, on_error=walk_error)
+
+        if by_content:
+            def content_progress(done: int, of: int):
+                self._set_progress(
+                    done / max(of, 1) * 60,
+                    t("Searching by content... {done}/{total}").format(done=done,
+                                                                      total=of),
+                )
+
+            hits = core.scan_by_content(
+                scan, references, threshold=threshold / 100.0, pattern=pattern,
+                exclude_dirs=exclude, progress=content_progress,
+                cancel_event=self._cancel_event, on_error=walk_error,
+            )
+            found = [path for path, _ in hits]
+            similarity_by_path = {path: score for path, score in hits}
+        else:
+            found = core.scan_files(scan, pattern, exclude_dirs=exclude,
+                                    cancel_event=self._cancel_event,
+                                    on_error=walk_error)
+            similarity_by_path = {}
+
         total = len(found)
         self.log(t("Files matching the pattern: {count}").format(count=total))
 
@@ -1066,7 +1169,8 @@ class RebrandingToolApp:
             if self._cancel_event.is_set():
                 raise OperationCancelled()
             try:
-                scanned.append(FileInfo.from_path(path))
+                scanned.append(FileInfo.from_path(
+                    path, similarity=similarity_by_path.get(path)))
             except OSError as exc:
                 self.log(t("  Error on {path}: {error}").format(path=path, error=exc),
                          logging.WARNING)
@@ -1085,13 +1189,17 @@ class RebrandingToolApp:
             self._scan_tree.insert(
                 "", tk.END, iid=info.path,
                 values=(index, info.name, info.fmt, info.size_str, info.dim_str,
-                        info.path),
+                        info.similarity_str, info.path),
+                tags=("review",) if info.needs_review else (),
             )
 
         count = len(self.scanned_files)
+        by_content = any(f.similarity is not None for f in self.scanned_files)
+        template = (t("{count} files found by content — {sources} sources available")
+                    if by_content
+                    else t("{count} files found — {sources} sources available"))
         self._scan_count_lbl.config(
-            text=t("{count} files found — {sources} sources available").format(
-                count=count, sources=len(self.source_files)))
+            text=template.format(count=count, sources=len(self.source_files)))
 
         if not announce:
             return
@@ -1100,6 +1208,13 @@ class RebrandingToolApp:
         self._status(t("Scan complete: {count} files found.").format(count=count))
         self.log(t("Scan complete: {count} files, {sources} sources available.").format(
             count=count, sources=len(self.source_files)))
+
+        uncertain = sum(1 for f in self.scanned_files if f.needs_review)
+        if uncertain:
+            self.log(t("⚠  {count} of them are below {threshold}% similarity: "
+                       "look at those before replacing.").format(
+                count=uncertain,
+                threshold=int(core.SIMILARITY_CONFIDENT * 100)), logging.WARNING)
 
         if count == 0:
             messagebox.showinfo(
