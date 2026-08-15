@@ -20,6 +20,7 @@ import threading
 import webbrowser
 from collections import deque
 from pathlib import Path
+from urllib.parse import quote
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -31,6 +32,8 @@ from core import (
     APP_NAME,
     APP_TAGLINE,
     APP_VERSION,
+    CONTACT_EMAIL,
+    LICENSE_EMAIL_SUBJECT,
     LICENSE_NOTICE,
     FileInfo,
     Match,
@@ -368,18 +371,48 @@ class RebrandingToolApp:
         Deliberately not translated: it is a legal notice rather than interface
         copy, and showing it is how the application meets the "Appropriate
         Legal Notices" requirement of AGPL-3.0 section 5.
+
+        The licensing address is a separate, clickable label rather than part
+        of the notice: the person running the application is the one who might
+        need to buy a commercial licence, and telling them it is "available"
+        without saying where to ask wastes the only place they will look.
         """
         footer = ttk.Frame(self.root)
         footer.pack(fill=tk.X, side=tk.BOTTOM, padx=8, pady=(0, 4))
 
+        # Centred as a pair: packing both into the full width would push the
+        # address to the far edge, away from the sentence introducing it.
+        centre = ttk.Frame(footer)
+        centre.pack(anchor=tk.CENTER)
+
         self._footer_label = ttk.Label(
-            footer,
+            centre,
             text=LICENSE_NOTICE,
             font=("Arial", 8),
             foreground="#8a94a0",
-            anchor=tk.CENTER,
         )
-        self._footer_label.pack(fill=tk.X)
+        self._footer_label.pack(side=tk.LEFT)
+
+        self._footer_email = ttk.Label(
+            centre,
+            text=CONTACT_EMAIL,
+            font=("Arial", 8, "underline"),
+            foreground=BRAND_BLUE,
+            cursor="hand2",
+        )
+        self._footer_email.pack(side=tk.LEFT, padx=(4, 0))
+        self._footer_email.bind("<Button-1>", self._open_licensing_email)
+
+    def _open_licensing_email(self, _event=None):
+        """Open the mail client on a commercial licensing enquiry."""
+        subject = quote(LICENSE_EMAIL_SUBJECT)
+        try:
+            webbrowser.open(f"mailto:{CONTACT_EMAIL}?subject={subject}")
+        except Exception as exc:
+            # No mail client configured, or none reachable. Not worth a dialog:
+            # the address is legible on screen and can be copied by hand.
+            self.log(t("Could not open the mail client: {error}").format(error=exc),
+                     level=logging.WARNING)
 
     def _build_status_bar(self):
         status_bar = ttk.Frame(self.root, relief=tk.SUNKEN)

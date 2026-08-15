@@ -925,3 +925,55 @@ def test_a_distorting_replacement_is_flagged(app, tmp_path):
     app._refresh_replace_summary()
     assert "stretch" in app._replace_summary_lbl.cget("text")
     assert office.aspect_mismatch((240, 80), (200, 200))
+
+
+# ---------------------------------------------------------------------------
+# Commercial licensing contact
+# ---------------------------------------------------------------------------
+
+def test_the_footer_shows_the_licensing_address(app):
+    """
+    The person running the tool is the one who might need to buy a licence.
+    "Commercial licensing available" without an address tells them nothing.
+    """
+    assert app._footer_email.cget("text") == core.CONTACT_EMAIL
+    assert "AGPL-3.0" in app._footer_label.cget("text")
+    # Tk hands back a cursor object rather than a plain string.
+    assert str(app._footer_email.cget("cursor")) == "hand2"
+
+
+def test_clicking_the_address_opens_the_mail_client(app, monkeypatch):
+    import rebranding_tool
+
+    opened = []
+    monkeypatch.setattr(rebranding_tool.webbrowser, "open", opened.append)
+
+    app._open_licensing_email()
+
+    assert len(opened) == 1
+    assert opened[0].startswith(f"mailto:{core.CONTACT_EMAIL}?subject=")
+    # The subject must survive URL-quoting: it contains an em dash.
+    assert "%E2%80%94" in opened[0] or "subject=Proteus" in opened[0]
+
+
+def test_a_missing_mail_client_does_not_crash(app, monkeypatch):
+    """No mail client is a normal state on a locked-down corporate desktop."""
+    import rebranding_tool
+
+    def explode(_url):
+        raise OSError("no mail client configured")
+
+    monkeypatch.setattr(rebranding_tool.webbrowser, "open", explode)
+
+    app._open_licensing_email()   # must not raise: the address is on screen
+
+    assert app.root.winfo_exists()
+    assert app._footer_email.cget("text") == core.CONTACT_EMAIL
+
+
+def test_the_address_survives_a_language_switch(app):
+    """The footer is rebuilt from scratch when the interface is rebuilt."""
+    app._change_language("Italiano")
+
+    assert app._footer_email.cget("text") == core.CONTACT_EMAIL
+    assert "AGPL-3.0" in app._footer_label.cget("text")

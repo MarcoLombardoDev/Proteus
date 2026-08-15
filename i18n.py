@@ -314,6 +314,8 @@ _IT: dict[str, str] = {
     "Path": "Percorso",
     "{path}\n\n(Could not open it automatically: {error})":
         "{path}\n\n(Apertura automatica non riuscita: {error})",
+    "Could not open the mail client: {error}":
+        "Impossibile aprire il client di posta: {error}",
     "No file found in the scan.\nRun the scan first.":
         "Nessun file trovato nella scansione.\nEsegui prima la scansione.",
     "No image file in the source folder.":
