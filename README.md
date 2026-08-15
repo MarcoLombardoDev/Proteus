@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-from%20%E2%82%AC250%2Fyear-green.svg)](COMMERCIAL-LICENSE.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-233-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-237-brightgreen.svg)](#development)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -627,7 +627,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 233 tests (logic, GUI, i18n, build, content, office, CLI, docs)
+├── tests/                        # 237 tests (logic, GUI, i18n, build, content, office, CLI, docs)
 ├── LICENSE                       # AGPL-3.0
 ├── COMMERCIAL-LICENSE.md         # Commercial terms and price list
 └── CLA.md                        # Contributor License Agreement
@@ -676,7 +676,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **233 tests** across eight files:
+The suite is **237 tests** across eight files:
 
 | File | Covers |
 |---|---|
@@ -800,8 +800,10 @@ There is **no licence key, no activation and no phone-home**: the software is id
 whether or not you have paid, and compliance is contractual. A tool that overwrites files
 on a production share has no business also containing a network client or a kill switch.
 
-To buy, open an issue titled `Commercial licence enquiry` — see
-[§4, How to buy](COMMERCIAL-LICENSE.md#4-how-to-buy).
+To buy, or to check which tier applies to you, write to
+**[marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com)** — see
+[§4, How to buy](COMMERCIAL-LICENSE.md#4-how-to-buy). Use email rather than a public issue:
+what you are building is usually not something you want indexed.
 
 ### Contributing
 

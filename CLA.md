@@ -107,4 +107,4 @@ Your GitHub username and the PR submission date serve as your electronic signatu
 
 ---
 
-*For questions about this agreement, contact the Project Owner via the repository's GitHub Issues.*
+*For questions about this agreement, contact the Project Owner via the repository's GitHub Issues, or at marco.lombardo@gmail.com.*
