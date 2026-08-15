@@ -1,7 +1,7 @@
 # 🖼️ Proteus - Rebranding Tool
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Commercial License Available](https://img.shields.io/badge/Commercial%20License-from%20%E2%82%AC450%2Fyear-green.svg)](COMMERCIAL-LICENSE.md)
+[![Commercial License Available](https://img.shields.io/badge/Commercial%20License-from%20%E2%82%AC250%2Fyear-green.svg)](COMMERCIAL-LICENSE.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-233-brightgreen.svg)](#development)
 
@@ -784,10 +784,10 @@ you are a company.
 | Tier | Price | Grants |
 |---|---:|---|
 | **Community** | **€0** | AGPL-3.0. Unlimited internal use. |
-| **Startup** | **€450 / year** | Under 10 employees and €1M revenue. One product, closed-source embedding. |
-| **Business** | **€1,900 / year** | Up to three products or services, hosted deployment, support in 5 business days. |
-| **Enterprise** | **€5,900 / year** | Unlimited products, SaaS and redistribution, support in 2 business days. |
-| **OEM / perpetual** | **from €14,000** one-off | Perpetual rights for one product line, priced per case. |
+| **Startup** | **€250 / year** | Under 10 employees and €1M revenue. One product, closed-source embedding. |
+| **Business** | **€950 / year** | Up to three products or services, hosted deployment, support in 5 business days. |
+| **Enterprise** | **€2,900 / year** | Unlimited products, SaaS and redistribution, support in 2 business days. |
+| **OEM / perpetual** | **from €7,000** one-off | Perpetual rights for one product line, priced per case. |
 
 Prices are per organisation, excluding VAT. **Seats are never counted.** Extras — support
 for AGPL users, priority feature work, white-label builds — are listed in
