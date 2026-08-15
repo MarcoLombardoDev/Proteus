@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
 import i18n
+import office
 from i18n import t
 
 try:
@@ -470,6 +471,11 @@ class FileInfo:
     #: notion does not apply.
     similarity: float | None = None
 
+    #: For a picture stored inside an Office package: the document on disk and
+    #: the entry within it. Both None for an ordinary file.
+    container: str | None = None
+    entry: str | None = None
+
     @property
     def fmt(self) -> str:
         """Uppercase format for display (`PNG`)."""
@@ -482,6 +488,16 @@ class FileInfo:
     @property
     def dim_str(self) -> str:
         return f"{self.dim[0]}×{self.dim[1]} px" if self.dim else t("N/A")
+
+    @property
+    def embedded(self) -> bool:
+        """True when this is a picture inside an Office document."""
+        return self.container is not None
+
+    @property
+    def location(self) -> str:
+        """Where the file lives, for display: the document for embedded ones."""
+        return self.container or self.path
 
     @property
     def similarity_str(self) -> str:
@@ -497,6 +513,37 @@ class FileInfo:
         unrelated image.
         """
         return self.similarity is not None and self.similarity < SIMILARITY_CONFIDENT
+
+    @classmethod
+    def from_embedded(cls, image: "office.EmbeddedImage",
+                      similarity: float | None = None) -> "FileInfo":
+        """
+        Describe a picture stored inside an Office package.
+
+        Its dimensions have to be read from the extracted bytes, so the image
+        is unpacked to a temporary file and removed straight away.
+        """
+        dim = None
+        temp = office.extract_to_temp(image.document, image.entry)
+        if temp:
+            try:
+                dim = get_image_dimensions(temp)
+            finally:
+                try:
+                    os.remove(temp)
+                except OSError:
+                    pass
+
+        return cls(
+            path=image.key,
+            name=image.name,
+            ext=image.ext,
+            size=image.size,
+            dim=dim,
+            similarity=similarity,
+            container=image.document,
+            entry=image.entry,
+        )
 
     @classmethod
     def from_path(cls, path: str, similarity: float | None = None) -> "FileInfo":
@@ -554,6 +601,18 @@ class Match:
         if relative <= QUALITY_FAIR:
             return QUALITY_GOOD_LABEL
         return QUALITY_WEAK
+
+    @property
+    def distorts(self) -> bool:
+        """
+        True when this replacement would visibly stretch the picture.
+
+        Only meaningful inside Office documents, where the frame keeps its own
+        proportions regardless of what is dropped into it.
+        """
+        if self.source is None or not self.target.embedded:
+            return False
+        return office.aspect_mismatch(self.target.dim, self.source.dim)
 
     @property
     def quality_label(self) -> str:
@@ -790,6 +849,71 @@ def scan_by_content(
     return hits
 
 
+def scan_office_documents(
+    folder: str,
+    *,
+    references: Sequence[str] = (),
+    threshold: float = DEFAULT_SIMILARITY,
+    exclude_dirs: Iterable[str] = (),
+    progress: Callable[[int, int], None] | None = None,
+    cancel_event: threading.Event | None = None,
+    on_error: Callable[[str, Exception], None] | None = None,
+) -> list[FileInfo]:
+    """
+    Find replaceable pictures inside the Office documents under `folder`.
+
+    Without `references` every embedded picture is returned; with them, only
+    those that look like the old logo. Content matching is the sensible mode
+    here: nobody names a picture inside a document, so `image1.png` tells you
+    nothing about what it depicts.
+    """
+    refs = reference_hashes(references) if references else []
+    excluded = [os.path.realpath(d) for d in exclude_dirs if d]
+
+    def _walk_error(exc: OSError) -> None:
+        if on_error:
+            on_error(getattr(exc, "filename", folder) or folder, exc)
+
+    documents: list[str] = []
+    for root, dirs, files in os.walk(folder, onerror=_walk_error, followlinks=False):
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelled()
+        real_root = os.path.realpath(root)
+        dirs[:] = [d for d in dirs
+                   if not any(is_within(os.path.join(real_root, d), ex)
+                              for ex in excluded)]
+        for fname in files:
+            if office.is_office_document(fname):
+                documents.append(os.path.join(root, fname))
+
+    found: list[FileInfo] = []
+    total = len(documents)
+
+    for index, document in enumerate(sorted(documents), 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelled()
+        for image in office.list_images(document):
+            similarity = None
+            if refs:
+                temp = office.extract_to_temp(document, image.entry)
+                if temp is None:
+                    continue
+                try:
+                    similarity = best_similarity(temp, refs)
+                finally:
+                    try:
+                        os.remove(temp)
+                    except OSError:
+                        pass
+                if similarity < threshold:
+                    continue
+            found.append(FileInfo.from_embedded(image, similarity=similarity))
+        if progress:
+            progress(index, total)
+
+    return found
+
+
 def collect_source_files(
     folder: str,
     *,
@@ -1019,6 +1143,54 @@ def replace_file(
                 pass
 
 
+def replace_in_document(
+    document: str,
+    replacements: dict[str, str],
+    *,
+    backup: bool = True,
+    dry_run: bool = False,
+) -> ReplaceOutcome:
+    """
+    Replace one or more pictures inside a single Office document.
+
+    Every picture destined for the same document is handled in one pass: the
+    package is rewritten once and, crucially, backed up once. Replacing three
+    logos in a report one at a time would otherwise produce three backups of
+    successive states and never a clean copy of the original.
+    """
+    if not os.path.isfile(document):
+        return ReplaceOutcome(document, "", "error",
+                              t("File to replace not found, or not a file."))
+
+    payload: dict[str, bytes] = {}
+    for entry, source in replacements.items():
+        if not os.path.isfile(source):
+            return ReplaceOutcome(document, source, "error",
+                                  t("Source file not found, or not a file."))
+        try:
+            with open(source, "rb") as handle:
+                payload[entry] = handle.read()
+        except OSError as exc:
+            return ReplaceOutcome(document, source, "error", str(exc))
+
+    if dry_run:
+        return ReplaceOutcome(document, ", ".join(replacements.values()), "ok",
+                              t("Dry run: nothing written to disk."),
+                              make_backup_path(document) if backup else None)
+
+    backup_path: str | None = None
+    try:
+        if backup:
+            backup_path = make_backup_path(document)
+            shutil.copy2(document, backup_path)
+        office.write_replacements(document, payload)
+        return ReplaceOutcome(document, ", ".join(replacements.values()), "ok",
+                              "", backup_path)
+    except Exception as exc:
+        return ReplaceOutcome(document, ", ".join(replacements.values()),
+                              "error", str(exc), backup_path)
+
+
 def replace_all(
     matches: Sequence[Match],
     *,
@@ -1027,19 +1199,48 @@ def replace_all(
     progress: Callable[[int, int, ReplaceOutcome], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> ReplaceReport:
-    """Run the replacement over every match passed in."""
-    report = ReplaceReport()
-    total = len(matches)
+    """
+    Run the replacement over every match passed in.
 
-    for index, match in enumerate(matches, 1):
+    Loose files are handled one by one. Pictures embedded in Office documents
+    are grouped by document first, so each package is rewritten and backed up
+    exactly once however many of its images are being replaced.
+    """
+    report = ReplaceReport()
+
+    loose: list[Match] = []
+    grouped: dict[str, dict[str, str]] = {}
+    for match in matches:
+        if match.target.embedded and match.source is not None:
+            grouped.setdefault(match.target.container, {})[
+                match.target.entry] = match.source.path
+        else:
+            loose.append(match)
+
+    total = len(loose) + len(grouped)
+    index = 0
+
+    for match in loose:
         if cancel_event is not None and cancel_event.is_set():
             report.cancelled = True
-            break
+            return report
+        index += 1
         if match.source is None:
             outcome = ReplaceOutcome(match.target.path, "", "skipped", t("No match."))
         else:
             outcome = replace_file(match.target.path, match.source.path,
                                    backup=backup, dry_run=dry_run)
+        report.outcomes.append(outcome)
+        if progress:
+            progress(index, total, outcome)
+
+    for document, replacements in sorted(grouped.items()):
+        if cancel_event is not None and cancel_event.is_set():
+            report.cancelled = True
+            return report
+        index += 1
+        outcome = replace_in_document(document, replacements,
+                                      backup=backup, dry_run=dry_run)
         report.outcomes.append(outcome)
         if progress:
             progress(index, total, outcome)
@@ -1194,6 +1395,7 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "search_mode": "name",
     "references": [],
     "similarity": int(DEFAULT_SIMILARITY * 100),
+    "include_office": False,
     "backup": True,
     "dry_run": False,
 }

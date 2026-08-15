@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-Available-green.svg)](#license--commercial-licensing)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-150-brightgreen.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-191-brightgreen.svg)](#development)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -50,18 +50,19 @@ settings are left untouched). Regenerate after a UI change with
 4. [Usage](#usage)
 5. [Search patterns](#search-patterns)
 6. [Content search](#content-search)
-7. [Matching algorithm](#matching-algorithm)
-8. [Safety model](#safety-model)
-9. [Backup and restore](#backup-and-restore)
-10. [CSV reports](#csv-reports)
-11. [Languages](#languages)
-12. [Files and folders](#files-and-folders)
-13. [Building a standalone executable](#building-a-standalone-executable)
-14. [Development](#development)
-15. [Requirements](#requirements)
-16. [Scope and limitations](#scope-and-limitations)
-17. [License & Commercial Licensing](#license--commercial-licensing)
-18. [Disclaimer](#disclaimer)
+7. [Office documents](#office-documents)
+8. [Matching algorithm](#matching-algorithm)
+9. [Safety model](#safety-model)
+10. [Backup and restore](#backup-and-restore)
+11. [CSV reports](#csv-reports)
+12. [Languages](#languages)
+13. [Files and folders](#files-and-folders)
+14. [Building a standalone executable](#building-a-standalone-executable)
+15. [Development](#development)
+16. [Requirements](#requirements)
+17. [Scope and limitations](#scope-and-limitations)
+18. [License & Commercial Licensing](#license--commercial-licensing)
+19. [Disclaimer](#disclaimer)
 
 ---
 
@@ -85,6 +86,8 @@ is guessing.
 **Finding**
 - **Content search**: find the old logo by what it *looks like*, not by what it is
   called — the half of a rebranding that wildcards cannot solve
+- **Inside Office documents**: pictures embedded in `.docx`, `.pptx` and `.xlsx` are found
+  and replaced like any other file — which is where most logos actually live
 - Recursive search with wildcard patterns; multiple patterns at once (`logo*.png; logo*.svg`)
 - Case-insensitive matching, symlink/junction cycle protection, per-folder error reporting
   so an unreadable network share does not abort the whole scan
@@ -249,10 +252,25 @@ as itself.
 | Same logo in another format (PNG/JPEG/BMP/…) | ✅ |
 | Heavily re-compressed JPEG | ✅ tested down to quality 35 |
 | With or without an alpha channel | ✅ |
-| **Recoloured** logo | ❌ a different colourway hashes differently |
+| **Recoloured** logo | ✅ — see the caveat below |
+| Logo **inside** a Word, PowerPoint or Excel file | ✅ see [Office documents](#office-documents) |
 | **Cropped or rotated** logo | ❌ |
-| Logo **inside** a document or a larger image | ❌ only whole image files are compared |
-| SVG, PDF, EPS | ❌ nothing to rasterise; use a pattern for those |
+| Logo composited into a larger picture | ❌ only whole images are compared |
+| SVG, PDF, EPS, EMF/WMF | ❌ nothing to rasterise; use a pattern for those |
+
+### Colour is not what it discriminates on
+
+A difference hash reads **luminance gradients**, and the *shape* is what creates them.
+The same silhouette in another colour therefore still matches — measured at 100% for a
+green or blue version of a red mark, 98% for black.
+
+That cuts both ways. It is useful, because a logo is found across all its colourways. It
+is also the main source of false positives: **two unrelated marks with similar
+silhouettes will match too.** What actually breaks a match is a change of shape or
+layout — the same test set drops to 70% for a genuinely different picture.
+
+This is the reason the threshold is strict and every hit is previewed before anything is
+written.
 
 ### Why the threshold is strict
 
@@ -264,6 +282,53 @@ Anything found below **95%** is shown in orange and reported in the log, because
 the rows a human actually needs to look at. The similarity of every hit is shown as a
 column and is sortable, and the pattern field still works as a pre-filter to narrow the
 search before any image is decoded.
+
+---
+
+## Office documents
+
+In a real rebranding most of the logos are not loose PNGs on a share — they are inside
+reports, decks and spreadsheet templates. Tick **Also look inside Office documents** and
+Proteus treats a picture embedded in a `.docx` the same as one sitting on disk: it appears
+in the results, gets a preview and a match, and is replaced with a backup.
+
+Modern Office files are ZIP packages, and every picture in them is stored as an ordinary
+image file under a `media/` folder inside. Proteus reads and rewrites them with the
+standard library alone — there is no new dependency, and no Office installation is needed.
+
+Supported: `.docx` `.docm` `.dotx` `.dotm` `.pptx` `.pptm` `.potx` `.potm` `.ppsx`
+`.xlsx` `.xlsm` `.xltx` `.xltm`.
+
+### One picture, every occurrence
+
+Office stores a picture **once** however many times it appears. A logo used in the body
+*and* in the page header is a single file inside the package, so one replacement fixes
+both — and the document is backed up **once**, no matter how many of its pictures change.
+That matters: replacing three logos one at a time would otherwise leave three backups of
+successive states and no clean copy of the original.
+
+### The frame does not follow the picture
+
+This is the way a bulk replacement can quietly ruin a thousand documents.
+
+The size and position of a picture are stored in the **document**, not in the image. A
+shape laid out at 3.33 × 1.11 inches stays 3.33 × 1.11 inches after the image inside it is
+swapped. Drop a square logo into a frame built for a 3:1 one and Word stretches it to fit.
+Nothing errors; the deck just looks wrong, and nobody notices until it is printed.
+
+Proteus compares the aspect ratio of the old picture with the new one and **flags the
+replacement in orange**, listing the count in the operation summary before you commit.
+The old picture's own ratio is used as a proxy for the frame, since the frame was almost
+certainly sized to it when the image was first inserted.
+
+### Not handled
+
+- **`.doc`, `.ppt`, `.xls`** — the pre-2007 binary formats are OLE compound files, not ZIP
+  packages.
+- **EMF/WMF metafiles**, which Office produces when a logo is *pasted* rather than
+  inserted. They cannot be rasterised by Pillow, so they could be neither previewed nor
+  compared — only swapped blindly, which is worse than not touching them.
+- Logos drawn with native Office shapes, or composited into a larger picture.
 
 ---
 
@@ -318,6 +383,8 @@ Bulk-overwriting files on a shared drive deserves care. The guarantees are:
 | Source folder nested in the scanned tree | Excluded from the scan automatically |
 | Replacing a file with nothing | Rows without a match cannot be enabled |
 | Content search hitting an unrelated image | Strict default threshold, similarity shown per row, uncertain hits coloured and logged |
+| A replacement silently distorting a picture in a document | Aspect ratios compared, mismatches coloured and counted in the summary |
+| A document rewritten while several of its pictures change | Grouped per document: rewritten once, backed up once, atomically |
 | Unsure about a whole campaign | Dry run reproduces the entire operation without writing |
 | Wrong replacement already applied | Restore from backups reverts to the pre-rebranding state |
 | Long scan on an unresponsive share | Cancellable, with per-folder error reporting rather than a hard abort |
@@ -380,6 +447,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── core.py                       # Logic: scan, match, replace, backup, CSV, settings
 ├── rebranding_tool.py            # Tkinter interface
 ├── i18n.py                       # Translation layer and language catalogues
+├── office.py                     # Reading and rewriting pictures inside OOXML packages
 ├── build.py                      # PyInstaller build
 ├── app.ico                       # Application icon (generated)
 ├── assets/generate_icon.py       # Regenerates app.ico
@@ -390,7 +458,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 150 tests (logic, GUI, i18n, build, content)
+├── tests/                        # 191 tests (logic, GUI, i18n, build, content, office)
 ├── LICENSE                       # AGPL-3.0
 └── CLA.md                        # Contributor License Agreement
 ```
@@ -430,7 +498,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **150 tests** across five files:
+The suite is **191 tests** across six files:
 
 | File | Covers |
 |---|---|
@@ -439,6 +507,7 @@ The suite is **150 tests** across five files:
 | `tests/test_i18n.py` | Translation layer, catalogue completeness and placeholder integrity |
 | `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
 | `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
+| `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups and aspect-ratio guarding |
 
 GUI tests run headless and are skipped automatically where no display exists. A `conftest`
 fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`
@@ -473,9 +542,14 @@ previews or read resolutions, and says so on the configuration tab.
 
 ## Scope and limitations
 
-- **Content search compares whole image files only.** It will not find a logo embedded
-  inside a Word or PowerPoint document, inside a PDF, or composited into a larger picture,
-  and it is blind to recolouring, cropping and rotation. Use a filename pattern for those.
+- **Content search discriminates on shape, not colour.** A recoloured logo still matches;
+  an unrelated mark with a similar silhouette may match too. Cropping and rotation defeat
+  it entirely.
+- **Only whole images are compared.** A logo composited into a larger picture, or drawn
+  with native Office shapes rather than inserted as a picture, is not found.
+- **Legacy Office formats are out of scope.** `.doc`, `.ppt` and `.xls` are OLE compound
+  files, not ZIP packages. So are EMF/WMF metafiles, which Office produces when a logo is
+  *pasted* rather than inserted.
 - **Previews and resolutions are unavailable for EPS and PDF.** Pillow cannot read them
   without Ghostscript. Files of those types can still be matched, graded by name
   similarity, and replaced.

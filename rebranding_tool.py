@@ -26,6 +26,7 @@ from tkinter import filedialog, messagebox, ttk
 
 import core
 import i18n
+import office
 from core import (
     APP_NAME,
     APP_TAGLINE,
@@ -105,6 +106,7 @@ class RebrandingToolApp:
         self._similarity_var = tk.IntVar(value=int(settings["similarity"]))
         self._references: list[str] = [r for r in settings["references"]
                                        if os.path.isfile(r)]
+        self._include_office = tk.BooleanVar(value=bool(settings["include_office"]))
 
         self.scanned_files: list[FileInfo] = []
         self.source_files: list[FileInfo] = []
@@ -521,6 +523,12 @@ class RebrandingToolApp:
                                             width=5, textvariable=self._similarity_var)
         self._similarity_spin.pack(side=tk.LEFT)
         ttk.Label(sim_row, text="%").pack(side=tk.LEFT, padx=(2, 0))
+
+        ttk.Checkbutton(
+            key_frame,
+            text=t("Also look inside Office documents (.docx, .pptx, .xlsx)"),
+            variable=self._include_office,
+        ).grid(row=6, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(6, 4))
 
         key_frame.columnconfigure(1, weight=1)
         self._refresh_references_label()
@@ -1018,6 +1026,7 @@ class RebrandingToolApp:
             "search_mode": self._search_mode.get(),
             "references": list(self._references),
             "similarity": int(self._similarity_var.get()),
+            "include_office": self._include_office.get(),
             "backup": self._backup_var.get(),
             "dry_run": self._dry_run_var.get(),
         })
@@ -1098,12 +1107,14 @@ class RebrandingToolApp:
         self._start_worker(
             self._scan_worker,
             (source, scan, pattern, self._searching_by_content(),
-             list(self._references), int(self._similarity_var.get())),
+             list(self._references), int(self._similarity_var.get()),
+             self._include_office.get()),
             t("Scanning..."),
         )
 
     def _scan_worker(self, source: str, scan: str, pattern: str,
-                     by_content: bool, references: list[str], threshold: int):
+                     by_content: bool, references: list[str], threshold: int,
+                     include_office: bool = False):
         if by_content:
             self.log(t("Content search started — folder: {folder} | "
                        "references: {count} | threshold: {threshold}%").format(
@@ -1179,6 +1190,27 @@ class RebrandingToolApp:
                 t("Analysing files... {done}/{total}").format(done=index, total=total),
             )
 
+        if include_office:
+            def document_progress(done: int, of: int):
+                self._set_progress(
+                    done / max(of, 1) * 100,
+                    t("Scanning documents... {done}/{total}").format(done=done,
+                                                                    total=of),
+                )
+
+            embedded = core.scan_office_documents(
+                scan,
+                references=references if by_content else (),
+                threshold=threshold / 100.0,
+                exclude_dirs=exclude,
+                progress=document_progress,
+                cancel_event=self._cancel_event,
+                on_error=walk_error,
+            )
+            self.log(t("Pictures found inside documents: {count}").format(
+                count=len(embedded)))
+            scanned.extend(embedded)
+
         self.source_files = source_files
         self.scanned_files = scanned
         self._ui(self._populate_scan_tree)
@@ -1233,12 +1265,15 @@ class RebrandingToolApp:
 
     def _on_scan_double_click(self, _event=None):
         selection = self._scan_tree.selection()
-        if selection:
-            self._open_in_file_manager(os.path.dirname(selection[0]))
+        if not selection:
+            return
+        info = next((f for f in self.scanned_files if f.path == selection[0]), None)
+        if info:
+            self._open_in_file_manager(os.path.dirname(info.location))
 
     def _show_preview(self, info: FileInfo):
         self._preview_canvas.delete("all")
-        thumb = self._make_thumbnail(info.path, PREVIEW_SIZE)
+        thumb = self._thumbnail_for(info, PREVIEW_SIZE)
         if thumb:
             self._keep_image("scan", thumb)
             self._preview_canvas.create_image(60, 45, image=thumb, anchor=tk.CENTER)
@@ -1277,6 +1312,22 @@ class RebrandingToolApp:
         # Collect any remaining cycles right here and now, so the finalisers
         # run on this thread and not on a worker.
         gc.collect()
+
+    @classmethod
+    def _thumbnail_for(cls, info: FileInfo, size):
+        """Thumbnail for a file, unpacking it first when it lives in a document."""
+        if not info.embedded:
+            return cls._make_thumbnail(info.path, size)
+        temp = office.extract_to_temp(info.container, info.entry)
+        if temp is None:
+            return None
+        try:
+            return cls._make_thumbnail(temp, size)
+        finally:
+            try:
+                os.remove(temp)
+            except OSError:
+                pass
 
     @staticmethod
     def _make_thumbnail(filepath: str, size):
@@ -1378,7 +1429,9 @@ class RebrandingToolApp:
             return "no_match"
         if not match.enabled:
             return "disabled"
-        return "weak" if match.quality == core.QUALITY_WEAK else "matched"
+        if match.quality == core.QUALITY_WEAK or match.distorts:
+            return "weak"
+        return "matched"
 
     def _refresh_match_row(self, match: Match):
         row_id = match.target.path
@@ -1425,7 +1478,7 @@ class RebrandingToolApp:
             return
 
         self._target_canvas.delete("all")
-        thumb = self._make_thumbnail(match.target.path, MATCH_PREVIEW_SIZE)
+        thumb = self._thumbnail_for(match.target, MATCH_PREVIEW_SIZE)
         if thumb:
             self._keep_image("match_target", thumb)
             self._target_canvas.create_image(45, 35, image=thumb, anchor=tk.CENTER)
@@ -1445,7 +1498,7 @@ class RebrandingToolApp:
                 text=t("Match not found.\nDouble-click to choose one manually."))
             return
 
-        src_thumb = self._make_thumbnail(match.source.path, MATCH_PREVIEW_SIZE)
+        src_thumb = self._thumbnail_for(match.source, MATCH_PREVIEW_SIZE)
         if src_thumb:
             self._keep_image("match_source", src_thumb)
             self._src_canvas.create_image(45, 35, image=src_thumb, anchor=tk.CENTER)
@@ -1614,12 +1667,17 @@ class RebrandingToolApp:
             mode = t("BACKUP DISABLED: the original files will be overwritten "
                      "permanently.")
 
+        distorting = sum(1 for m in enabled if m.distorts)
         weak = sum(1 for m in enabled if m.quality == core.QUALITY_WEAK)
         text = t("{count} of {total} analysed files will be replaced.\n{mode}").format(
             count=len(enabled), total=len(self.matches), mode=mode)
         if weak:
             text += t("\n⚠  {count} matches are rated «Weak»: review them in "
                       "tab ③.").format(count=weak)
+        if distorting:
+            text += t("\n⚠  {count} replacements would stretch the picture: inside "
+                      "a document the frame keeps its own proportions.").format(
+                count=distorting)
         self._replace_summary_lbl.config(text=text)
 
     def _execute_replacement(self):

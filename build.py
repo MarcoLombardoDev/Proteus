@@ -96,7 +96,8 @@ class RebrandingToolBuilder:
         # ttkbootstrap is optional: the app also works without it, on ttk themes.
         self._ensure_module("ttkbootstrap", "ttkbootstrap")
 
-        for required in (self.main_script, "rebranding_tool.py", "core.py"):
+        for required in (self.main_script, "rebranding_tool.py", "core.py",
+                         "i18n.py", "office.py"):
             if not os.path.exists(required):
                 print(f"❌ File not found: {required}")
                 return False
@@ -126,7 +127,7 @@ class RebrandingToolBuilder:
             # fails at runtime with "No module named 'PIL._tkinter_finder'" and
             # the image previews disappear from the .exe.
             "PIL._tkinter_finder",
-            "core", "rebranding_tool",
+            "core", "rebranding_tool", "i18n", "office",
         ]
 
         add_data = []
