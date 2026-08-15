@@ -63,19 +63,19 @@ developer or per installation.
 | Tier | Price | Who it is for | Grants |
 |---|---:|---|---|
 | **Community** | **€0** | Everyone | AGPL-3.0. Unlimited internal use. |
-| **Startup** | **€450 / year** | Fewer than 10 employees **and** under €1M annual revenue | One product or service. Closed-source embedding. |
-| **Business** | **€1,900 / year** | Companies past the Startup thresholds | Up to three products or services. Hosted deployment. Email support, 5 business days. |
-| **Enterprise** | **€5,900 / year** | Unlimited scope | Unlimited products, SaaS and redistribution. Email support, 2 business days. Written answers to procurement and legal questionnaires. |
-| **OEM / perpetual** | **from €14,000** one-off | Rebranding it as your own, or needing a licence that cannot lapse | Perpetual, irrevocable rights for one named product line. Priced per case. |
+| **Startup** | **€250 / year** | Fewer than 10 employees **and** under €1M annual revenue | One product or service. Closed-source embedding. |
+| **Business** | **€950 / year** | Companies past the Startup thresholds | Up to three products or services. Hosted deployment. Email support, 5 business days. |
+| **Enterprise** | **€2,900 / year** | Unlimited scope | Unlimited products, SaaS and redistribution. Email support, 2 business days. Written answers to procurement and legal questionnaires. |
+| **OEM / perpetual** | **from €7,000** one-off | Rebranding it as your own, or needing a licence that cannot lapse | Perpetual, irrevocable rights for one named product line. Priced per case. |
 
 ### Optional extras
 
 | | Price |
 |---|---:|
-| Support contract for **AGPL** users (no licence change, just help) | €600 / year |
-| Priority feature development | €900 / day |
-| White-label build: your name, your icon, your strings | €2,500 one-off |
-| On-site or remote onboarding, half day | €700 |
+| Support contract for **AGPL** users (no licence change, just help) | €300 / year |
+| Priority feature development | €450 / day |
+| White-label build: your name, your icon, your strings | €1,200 one-off |
+| On-site or remote onboarding, half day | €350 |
 
 ### What a subscription actually buys
 
