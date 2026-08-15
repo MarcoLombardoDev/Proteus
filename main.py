@@ -32,6 +32,13 @@ def _fatal(title: str, message: str) -> None:
 
 
 def main() -> int:
+    # Any argument means the caller wants the command line, not the window.
+    # This keeps one entry point for both, so the packaged executable can serve
+    # a scheduled job as well as a person.
+    if len(sys.argv) > 1:
+        from cli import entry_point
+        return entry_point()
+
     if sys.version_info < MIN_PYTHON:
         _fatal(
             "Unsupported Python version",

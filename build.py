@@ -61,6 +61,11 @@ def python_launcher() -> list[str]:
 class RebrandingToolBuilder:
     def __init__(self) -> None:
         self.app_name = "Proteus"
+        #: Second, console-attached binary for the command line. On Windows a
+        #: --windowed executable has no console at all: every print() from the
+        #: CLI would vanish and a scheduled job could not be diagnosed. The two
+        #: binaries share the same entry point and differ only in that flag.
+        self.cli_name = "proteus-cli"
         self.main_script = "main.py"
         self.output_dir = "dist"
         self.python = python_launcher()
@@ -97,7 +102,7 @@ class RebrandingToolBuilder:
         self._ensure_module("ttkbootstrap", "ttkbootstrap")
 
         for required in (self.main_script, "rebranding_tool.py", "core.py",
-                         "i18n.py", "office.py"):
+                         "i18n.py", "office.py", "cli.py"):
             if not os.path.exists(required):
                 print(f"❌ File not found: {required}")
                 return False
@@ -116,8 +121,10 @@ class RebrandingToolBuilder:
                     print(f"  ⚠️  Could not remove {temp_dir}: {exc}")
         time.sleep(1)
 
-    def build_executable(self) -> str | None:
-        print("🔨 Building the executable...")
+    def build_executable(self, name: str | None = None, windowed: bool = True) -> str | None:
+        name = name or self.app_name
+        kind = "windowed" if windowed else "console"
+        print(f"🔨 Building the {kind} executable ({name})...")
 
         hidden_imports = [
             "tkinter", "tkinter.ttk", "tkinter.filedialog",
@@ -127,7 +134,7 @@ class RebrandingToolBuilder:
             # fails at runtime with "No module named 'PIL._tkinter_finder'" and
             # the image previews disappear from the .exe.
             "PIL._tkinter_finder",
-            "core", "rebranding_tool", "i18n", "office",
+            "core", "rebranding_tool", "i18n", "office", "cli",
         ]
 
         add_data = []
@@ -147,11 +154,15 @@ class RebrandingToolBuilder:
         cmd = [
             "-m", "PyInstaller",
             "--onefile",
-            "--windowed",
-            f"--name={self.app_name}",
+            "--windowed" if windowed else "--console",
+            f"--name={name}",
             "--noconfirm",
-            "--clean",
         ]
+
+        # Only the first pass clears the cache: doing it again would make the
+        # second binary a full rebuild for no benefit.
+        if windowed:
+            cmd.append("--clean")
 
         if os.path.exists("app.ico"):
             cmd.append("--icon=app.ico")
@@ -187,33 +198,44 @@ class RebrandingToolBuilder:
                 print(f"   STDERR: {result.stderr[-2000:]}")
             return None
 
-        exe_path = os.path.join(self.output_dir, f"{self.app_name}{self.exe_suffix}")
+        exe_path = os.path.join(self.output_dir, f"{name}{self.exe_suffix}")
         if not os.path.exists(exe_path):
             print(f"❌ Executable not found after the build: {exe_path}")
             return None
 
         size_mb = os.path.getsize(exe_path) / (1024 * 1024)
-        print("✅ Build complete!")
-        print(f"📁 Executable: {exe_path}")
-        print(f"📏 Size: {size_mb:.1f} MB")
+        print(f"✅ {name} built — {exe_path} ({size_mb:.1f} MB)")
         return exe_path
 
-    def create_distribution(self, exe_path: str) -> bool:
+    def create_distribution(self, exe_path: str, cli_path: str | None = None) -> bool:
         print("📦 Preparing the distribution...")
         logs_dir = os.path.join(self.output_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
         print(f"  📁 Folder created: {logs_dir}")
 
+        lines = [
+            "Proteus - Rebranding Tool",
+            "=========================",
+            "",
+            f"Interface:    {os.path.basename(exe_path)}",
+        ]
+        if cli_path:
+            lines += [
+                f"Command line: {os.path.basename(cli_path)}"
+                " --help   (for scripts and scheduled jobs)",
+                "",
+                "The command line never writes anything unless --apply is given.",
+            ]
+        lines += [
+            "",
+            "Logs are written to the 'logs' folder next to the executable.",
+            "If the executable lives in a read-only location, logs go to",
+            "%LOCALAPPDATA%\\Proteus\\logs instead.",
+            "",
+        ]
+
         readme = Path(self.output_dir) / "READ_ME_FIRST.txt"
-        readme.write_text(
-            "Proteus - Rebranding Tool\n"
-            "=========================\n\n"
-            f"Executable: {os.path.basename(exe_path)}\n"
-            "Logs are written to the 'logs' folder next to the executable.\n"
-            "If the executable lives in a read-only location, logs go to\n"
-            "%LOCALAPPDATA%\\Proteus\\logs instead.\n",
-            encoding="utf-8",
-        )
+        readme.write_text("\n".join(lines), encoding="utf-8")
         return True
 
     def build(self) -> bool:
@@ -236,12 +258,19 @@ class RebrandingToolBuilder:
             return False
 
         print()
-        self.create_distribution(exe_path)
+        cli_path = self.build_executable(self.cli_name, windowed=False)
+        if not cli_path:
+            print("\n❌ BUILD FAILED: error while building the command line")
+            return False
+
+        print()
+        self.create_distribution(exe_path, cli_path)
         print()
         print("=" * 55)
         print("   BUILD COMPLETED SUCCESSFULLY!")
         print("=" * 55)
-        print(f"📁 Executable: {exe_path}")
+        print(f"📁 Interface:    {exe_path}")
+        print(f"📁 Command line: {cli_path}")
         print(f"📁 Logs: {os.path.join(self.output_dir, 'logs')}")
         print()
         print("✅ The application is ready for distribution!")
