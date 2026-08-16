@@ -59,20 +59,35 @@ def test_every_capture_the_generator_produces_is_shown():
 # Licensing
 # ---------------------------------------------------------------------------
 
-TIERS = ("Community", "Startup", "Business", "Enterprise")
+#: Tiers that must exist under the same name in both documents. The perpetual
+#: options are deliberately absent: the README collapses the two scopes onto a
+#: single row, so their figures are checked below by amount instead of by name.
+TIERS = ("Community", "Internal", "OEM", "Enterprise")
 
 
-def prices(text: str) -> dict[str, set[str]]:
-    """Map each tier name to the prices quoted on its row."""
-    found: dict[str, set[str]] = {}
+def section(text: str, heading: str, stop: str) -> str:
+    """The slice of a document between two headings."""
+    start = text.index(heading)
+    end = text.index(stop, start)
+    return text[start:end]
+
+
+def tier_rows(text: str) -> dict[str, str]:
+    """Map each tier name to the raw table row quoting its price."""
+    found: dict[str, str] = {}
     for line in text.splitlines():
         if not line.startswith("|"):
             continue
         for tier in TIERS:
-            if f"**{tier}**" in line:
-                found.setdefault(tier, set()).update(
-                    re.findall(r"€[\d,]+(?:\s*/\s*year)?|€0", line))
+            if f"**{tier}" in line:
+                found.setdefault(tier, line)
     return found
+
+
+def amounts(text: str) -> set[str]:
+    """Every monetary figure in `text`, normalised."""
+    return {a.replace(",", "").replace(" ", "")
+            for a in re.findall(r"€\s?[\d,]+", text)}
 
 
 def test_the_price_list_agrees_with_itself():
@@ -80,15 +95,43 @@ def test_the_price_list_agrees_with_itself():
     The README summarises the price list; COMMERCIAL-LICENSE.md is the source
     of truth. Two copies of a number is one copy too many, so they are compared
     rather than trusted.
-    """
-    licence = prices(read("COMMERCIAL-LICENSE.md"))
-    readme = prices(read("README.md"))
 
-    assert set(licence) == set(TIERS), f"tiers missing from the licence: {licence.keys()}"
-    for tier in TIERS:
-        assert readme.get(tier) == licence[tier], (
-            f"{tier}: README says {readme.get(tier)}, "
-            f"COMMERCIAL-LICENSE.md says {licence[tier]}")
+    Compared by amount rather than by row, because the README legitimately
+    collapses rows the licence keeps separate. What must never differ is the
+    set of figures a reader is quoted.
+    """
+    terms = read("COMMERCIAL-LICENSE.md")
+    # The README's licensing section summarises the whole offer, so it is
+    # compared against both places the licence quotes a figure: the price list
+    # and the custom-development day rate.
+    licence = (amounts(section(terms, "## 3. Price list", "## 4."))
+               | amounts(section(terms, "## 5. Custom development", "## 6.")))
+    readme = amounts(section(read("README.md"),
+                             "### Commercial Licensing", "### Contributing"))
+
+    assert readme == licence, (f"README quotes {sorted(readme)}, "
+                               f"COMMERCIAL-LICENSE.md quotes {sorted(licence)}")
+
+
+def test_every_tier_is_named_in_both_documents():
+    """A tier the README never mentions is a tier nobody will ask about."""
+    licence = tier_rows(section(read("COMMERCIAL-LICENSE.md"), "## 3. Price list", "## 4."))
+    readme = tier_rows(section(read("README.md"), "### Commercial Licensing", "### Contributing"))
+
+    assert set(licence) == set(TIERS), f"tiers missing from the licence: {sorted(licence)}"
+    assert set(readme) == set(TIERS), f"tiers missing from the README: {sorted(readme)}"
+
+
+def test_the_free_tier_stays_free():
+    """
+    The Community row is the one a hostile reading would quietly reprice. It
+    must cost nothing, in both documents, in words a reader cannot misread.
+    """
+    for document, heading, stop in (
+            ("COMMERCIAL-LICENSE.md", "## 3. Price list", "## 4."),
+            ("README.md", "### Commercial Licensing", "### Contributing")):
+        row = tier_rows(section(read(document), heading, stop))["Community"]
+        assert re.search(r"\*\*(Free|€0)\*\*", row), f"{document}: {row.strip()}"
 
 
 def test_the_agpl_text_is_not_edited():
@@ -117,7 +160,14 @@ def test_the_commercial_terms_do_not_contradict_the_agpl_on_internal_use():
     otherwise would be misrepresenting the licence the project ships under.
     """
     terms = read("COMMERCIAL-LICENSE.md").lower()
-    assert "internal business use of the unmodified tool is free" in terms
+
+    # Matched on substance rather than on an exact sentence: the wording has
+    # already been rewritten once, and pinning the phrasing only teaches the
+    # next editor to delete the test.
+    match = re.search(r"organisations of any size", terms)
+    assert match, "the terms must state that internal use is free at any size"
+    assert "free" in terms[max(0, match.start() - 160):match.end()], (
+        "'organisations of any size' must appear in a sentence about it being free")
 
 
 CONTACT = "marco.lombardo@gmail.com"
