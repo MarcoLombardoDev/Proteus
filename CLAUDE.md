@@ -66,4 +66,3 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
 - **Regenerate screenshots after a UI change:**
   `xvfb-run -a python docs/generate_screenshots.py`. The terminal capture runs
   the real CLI and draws its actual output, so it cannot go stale silently.
-- **Update the test-count badge** in the README when the count changes.

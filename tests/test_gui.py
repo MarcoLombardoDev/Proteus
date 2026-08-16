@@ -951,9 +951,11 @@ def test_clicking_the_address_opens_the_mail_client(app, monkeypatch):
     app._open_licensing_email()
 
     assert len(opened) == 1
-    assert opened[0].startswith(f"mailto:{core.CONTACT_EMAIL}?subject=")
-    # The subject must survive URL-quoting: it contains an em dash.
-    assert "%E2%80%94" in opened[0] or "subject=Proteus" in opened[0]
+    from urllib.parse import quote
+
+    expected = (f"mailto:{core.CONTACT_EMAIL}"
+                f"?subject={quote(core.LICENSE_EMAIL_SUBJECT)}")
+    assert opened[0] == expected
 
 
 def test_a_missing_mail_client_does_not_crash(app, monkeypatch):

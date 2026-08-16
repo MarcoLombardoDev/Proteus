@@ -11,3 +11,7 @@ python-pptx>=0.6.23
 openpyxl>=3.1
 # Prevents a GUI test that opens a modal dialog from hanging the suite.
 pytest-timeout>=2.1
+
+# Screen capture for docs/generate_screenshots.py. Not needed to run or
+# test Proteus, only to regenerate the README images.
+mss>=9.0
