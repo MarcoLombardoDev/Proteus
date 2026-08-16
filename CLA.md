@@ -107,4 +107,4 @@ Your GitHub username and the PR submission date serve as your electronic signatu
 
 ---
 
-*For questions about this agreement, contact the Project Owner via the repository's GitHub Issues, or at marco.lombardo@gmail.com.*
+*For questions about this agreement, open a GitHub Issue on the repository — or, if the matter is not one to discuss in public (an employer's rights over your work, a Corporate CLA, a licensing question), email the Project Owner at [marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20CLA).*

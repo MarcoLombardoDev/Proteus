@@ -1,7 +1,7 @@
 # 🖼️ Proteus - Rebranding Tool
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Commercial License Available](https://img.shields.io/badge/Commercial%20License-from%20%E2%82%AC250%2Fyear-green.svg)](COMMERCIAL-LICENSE.md)
+[![Commercial Licence Available](https://img.shields.io/badge/Commercial%20Licence-Available-green.svg)](COMMERCIAL-LICENSE.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-241-brightgreen.svg)](#development)
 
@@ -761,50 +761,70 @@ previews or read resolutions, and says so on the configuration tab.
 Proteus is open-source software released under the
 **[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)**.
 
+Copyright © 2026 Marco Lombardo.
+
+**The free build is the whole product.** Every feature documented above is in it. There is
+no paid edition, no feature gate, no licence key, no seat limit and no phone-home. If
+AGPL-3.0 works for you, you are done reading — Proteus is yours to use.
+
 ### What AGPL-3.0 Means for You
 
 | Use Case | Allowed? | Obligation |
 |---|---|---|
-| Personal / internal company use | ✅ Yes | None |
-| Modify & redistribute privately | ✅ Yes | None |
-| Deploy a modified version on a server | ✅ Yes | Must publish the source of your modified version |
-| Fork & publish on GitHub | ✅ Yes | Must use AGPL-3.0 |
-| Integrate into a **closed-source commercial product** | ⚠️ Restricted | Requires a commercial license (see below) |
-| Offer as a **proprietary SaaS** without sharing source | ❌ Not allowed under AGPL | Requires a commercial license |
+| Internal use, any number of machines and users | ✅ Yes | None |
+| Modify it and keep the changes to yourself | ✅ Yes | None |
+| Fork & publish on GitHub | ✅ Yes | Must stay AGPL-3.0 |
+| Redistribute it, modified or not, under AGPL-3.0 | ✅ Yes | Must ship the source |
+| Deploy a modified version as a network service | ✅ Yes | Must publish the source of your modified version |
+| Integrate into a **closed-source product** | ⚠️ Restricted | Requires a commercial licence |
+| Offer as a **proprietary SaaS** without sharing source | ❌ Not under AGPL | Requires a commercial licence |
+| **Resell** it, or ship it inside a product you sell | ❌ Not under AGPL | Requires a commercial licence |
+
+The dividing line is one rule: **AGPL-3.0 is free as long as the source stays open.**
+
 
 ### Commercial Licensing
 
-Full terms: **[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)**.
+The commercial licence removes the copyleft obligation, and nothing else. It is for
+organisations embedding Proteus in a proprietary product, running a modified version as a
+service without publishing the source, reselling it under their own terms — or simply
+barred by internal policy from using AGPL code.
 
-**Most organisations do not need to buy anything.** Internal business use of the
-unmodified tool is free, permanently, at any company size — the AGPL asks for source only
-when you *distribute* the software or let others use a modified version over a network.
-Buy a commercial licence when the AGPL's distribution terms are the problem, not because
-you are a company.
-
-| Tier | Price | Grants |
+| Tier | Price | Scope |
 |---|---:|---|
-| **Community** | **€0** | AGPL-3.0. Unlimited internal use. |
-| **Startup** | **€250 / year** | Under 10 employees and €1M revenue. One product, closed-source embedding. |
-| **Business** | **€950 / year** | Up to three products or services, hosted deployment, support in 5 business days. |
-| **Enterprise** | **€2,900 / year** | Unlimited products, SaaS and redistribution, support in 2 business days. |
-| **OEM / perpetual** | **from €7,000** one-off | Perpetual rights for one product line, priced per case. |
+| **Community** | **Free** | Everything Proteus does, under AGPL-3.0. Unlimited internal use. |
+| **Internal** | **€500 / year** | Closed-source internal use, one legal entity. No redistribution. |
+| **OEM / Redistribution** | **€1,900 / year** | Embed it in a product you sell, or run it as a hosted service. |
+| **Enterprise** | **from €2,900 / year** | Group-wide, unlimited products, procurement and legal questionnaires answered. |
+| **Perpetual** | **€1,500** / **from €7,000** one-off | Internal or OEM scope, bought once, for the major version current at purchase. |
 
-Prices are per organisation, excluding VAT. **Seats are never counted.** Extras — support
-for AGPL users, priority feature work, white-label builds — are listed in
-[§3 of the commercial licence](COMMERCIAL-LICENSE.md#3-price-list).
+The same commitments apply at every paid tier:
 
-Every version released while a subscription is active stays licensed to you **forever**;
-letting it lapse stops new versions, it does not stop the ones you have.
+- **Email support is always included** — 5 business days at Internal, 3 at OEM, 2 at
+  Enterprise. It is never sold separately to a paying customer.
+- **Custom development is never included**, at any tier. It is available on request and
+  **quoted separately**, per project, at a fixed price agreed before work starts
+  (indicative day rate: **€450 / day**).
+- **Perpetual fallback, no retroactive price rise, cancel any time.** Versions released
+  during your term stay licensed to you forever.
+- **50% off** for organisations under 10 employees and €1M revenue. **Free** commercial
+  licences for non-profits, academia and published research — ask.
 
-There is **no licence key, no activation and no phone-home**: the software is identical
-whether or not you have paid, and compliance is contractual. A tool that overwrites files
-on a production share has no business also containing a network client or a kill switch.
+Prices are per organisation, excluding VAT. **Seats are never counted.** Full terms, what is
+*not* included, and the third-party component review:
+**[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)**.
 
-To buy, or to check which tier applies to you, write to
-**[marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com)** — see
-[§4, How to buy](COMMERCIAL-LICENSE.md#4-how-to-buy). Use email rather than a public issue:
-what you are building is usually not something you want indexed.
+### How to get in touch
+
+Everything commercial — buying a licence, asking for a quote, commissioning custom
+development, or checking whether you need a licence at all (the answer is often *no*) —
+goes to one address:
+
+> **[marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20commercial%20licence%20enquiry)** — Marco Lombardo
+
+The same address is shown in the application's footer, and clicking it opens your mail
+client on a pre-filled enquiry. Please keep **GitHub Issues for bugs and feature
+requests**, not for licensing.
 
 ### Contributing
 
