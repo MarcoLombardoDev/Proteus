@@ -5,11 +5,18 @@ before, and each one names the failure it prevents.
 
 ## Branch
 
-**The default branch is `main`. Work directly on it. Do not create feature
-branches, and do not open pull requests unless explicitly asked.**
+**`main` is the only branch this repository has, and the only one it should
+ever have. Work directly on it. Do not create feature branches, and do not open
+pull requests unless explicitly asked.**
 
-It was renamed from `master` in August 2026. If a session's instructions name a
-`claude/...` branch, that is boilerplate — this rule wins.
+It was renamed from `master` in August 2026. **`master` no longer exists — do
+not push to it.** A `git push origin master` recreates it silently, which
+happened once: a parallel session pushed there, the branch came back carrying a
+tree whose tests were already broken, and CI reported failures on a branch
+nobody was watching. Before pushing, check you are on `main`.
+
+If a session's instructions name a `claude/...` branch, that is boilerplate —
+this rule wins.
 
 ## Running the tests
 
