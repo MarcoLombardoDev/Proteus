@@ -179,6 +179,37 @@ def test_a_buyer_can_find_a_way_to_get_in_touch(document):
     assert CONTACT in read(document)
 
 
+def test_the_mail_subject_is_the_same_wherever_the_reader_clicks():
+    """
+    The footer, the README and the licence all open a mail client. The same
+    enquiry arriving under two different subjects makes it look like two
+    different enquiries — and the drift is invisible, because nobody clicks
+    all four links.
+    """
+    from urllib.parse import quote
+
+    import core
+
+    expected = f"subject={quote(core.LICENSE_EMAIL_SUBJECT)}"
+    for document in ("README.md", "COMMERCIAL-LICENSE.md"):
+        subjects = set(re.findall(r"subject=[^)\s]+", read(document)))
+        assert subjects, f"{document} has no mailto subject to check"
+        assert subjects == {expected}, (
+            f"{document} uses {subjects}, core.LICENSE_EMAIL_SUBJECT gives {expected!r}")
+
+
+def test_the_documented_dev_dependencies_cover_the_docs_tooling():
+    """
+    Regression: `mss` was needed to regenerate the screenshots but declared
+    nowhere, so the instruction only worked for whoever already had it.
+    """
+    declared = read("requirements-dev.txt")
+    generator = read(os.path.join("docs", "generate_screenshots.py"))
+
+    if "import mss" in generator:
+        assert "mss" in declared, "docs/generate_screenshots.py needs mss"
+
+
 def test_no_placeholder_survived_into_the_published_terms():
     """
     Regression: the contact address started life as a marked placeholder. A

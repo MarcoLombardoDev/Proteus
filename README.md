@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial Licence Available](https://img.shields.io/badge/Commercial%20Licence-Available-green.svg)](COMMERCIAL-LICENSE.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-243-brightgreen.svg)](#development)
+[![CI](https://github.com/MarcoLombardoDev/Proteus/actions/workflows/ci.yml/badge.svg)](https://github.com/MarcoLombardoDev/Proteus/actions/workflows/ci.yml)
 
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
@@ -628,7 +628,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── run.bat / run.sh              # Launchers
 ├── install_dependencies.bat      # Windows dependency setup
 ├── compile.bat                   # Windows build shortcut
-├── tests/                        # 243 tests (logic, GUI, i18n, build, content, office, CLI, docs)
+├── tests/                        # logic, GUI, i18n, build, content, office, CLI, docs
 ├── CLAUDE.md                     # Conventions for anyone working on the repo
 ├── LICENSE                       # AGPL-3.0
 ├── COMMERCIAL-LICENSE.md         # Commercial terms and price list
@@ -678,7 +678,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is **243 tests** across eight files:
+The suite is spread across eight files:
 
 | File | Covers |
 |---|---|

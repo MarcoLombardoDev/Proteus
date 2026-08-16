@@ -73,8 +73,11 @@ LICENSE_NOTICE = (
     "  |  Commercial licensing:"
 )
 
-#: Subject line pre-filled when the footer address is clicked.
-LICENSE_EMAIL_SUBJECT = f"{APP_NAME} — commercial licence enquiry"
+#: Subject line pre-filled when the footer address is clicked. Kept identical
+#: to the mailto: links in the README and in COMMERCIAL-LICENSE.md — the same
+#: enquiry should not arrive under two different subjects depending on where
+#: the reader clicked. A test compares them.
+LICENSE_EMAIL_SUBJECT = f"{APP_NAME} commercial licence enquiry"
 
 #: File types treated as images when collected from the source folder.
 SUPPORTED_FORMATS = frozenset({
