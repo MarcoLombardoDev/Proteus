@@ -66,3 +66,47 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
 - **Regenerate screenshots after a UI change:**
   `xvfb-run -a python docs/generate_screenshots.py`. The terminal capture runs
   the real CLI and draws its actual output, so it cannot go stale silently.
+
+## The offer is shared with two sibling products
+
+Proteus is one of three dual-licensed products — with **Iris** (email sender) and
+**Argus** (market forecasting) — that deliberately sell on **the same commercial
+offer**, differing only in price, scope wording and the third-party review.
+Restructuring the offer here means restructuring it in all three, or the alignment
+is silently lost.
+
+What must stay identical across the three:
+
+- **`COMMERCIAL-LICENSE.md`, the same eleven sections**, and the same tier ladder:
+  Community / Internal / OEM & Redistribution / Enterprise, plus a perpetual option
+  on Internal or OEM scope.
+- **Email is the only commercial channel.** GitHub Issues are for bugs and features.
+- **Email support is included at every paid tier** (5 / 3 / 2 business days), never
+  sold separately to a paying customer.
+- **Custom development is never included**, at any tier, and is always quoted
+  separately per project at a fixed price agreed before work starts.
+- Perpetual fallback, no retroactive price rise, cancel any time, **no licence key
+  and no phone-home**, 50% discount under 10 employees and €1M revenue, free
+  licences for non-profits, academia and published research.
+
+Proteus is the entry point of the range, and the ladder is deliberately monotonic:
+**Proteus < Iris < Argus on every row.** Move a price here and check the other two
+still line up.
+
+Underneath all of it: **the free AGPL build is the whole product.** No paid edition,
+no feature gate, no seat limit. A commercial licence buys *permission*, not
+functionality — never add a feature unlocked by paying. This is the same rule as
+"do not claim internal use requires a licence", seen from the product side.
+
+## Dependency licence hygiene
+
+`COMMERCIAL-LICENSE.md` tells buyers that **no dependency imposes copyleft**. That
+sentence has to stay true, so check the licence before adding a dependency:
+permissive (MIT / BSD / Apache-2.0 / PSF / HPND) is fine, copyleft or
+"dual AGPL-or-pay" is not — a commercial licence cannot relicense someone else's
+code, and the buyer would need a second one.
+
+Iris had to swap PyMuPDF (AGPL-3.0 or Artifex commercial) for `pypdf`
+(BSD-3-Clause) for exactly this reason. Proteus's tree is clean — keep it that way.
+PyInstaller is GPL-2.0 **with the bootloader exception**, which exists precisely to
+allow proprietary frozen applications, so that one is fine.
