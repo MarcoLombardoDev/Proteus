@@ -65,17 +65,16 @@ jobs:
       - name: Build
         run: python build.py
 
-      # The command line is a second, console-attached binary: a --windowed
-      # executable has no console on Windows, so its output would be invisible.
+      # One executable serves both the interface and the command line: it is
+      # built --console (so the CLI half actually prints) and main.py hides
+      # the console window itself when no arguments are given.
       - name: Smoke-test the command line
         run: |
-          dist\proteus-cli.exe --version
-          dist\proteus-cli.exe --help
+          dist\Proteus.exe --version
+          dist\Proteus.exe --help
 
       - uses: actions/upload-artifact@v4
         with:
           name: Proteus-windows
-          path: |
-            dist/Proteus.exe
-            dist/proteus-cli.exe
+          path: dist/Proteus.exe
           if-no-files-found: error
