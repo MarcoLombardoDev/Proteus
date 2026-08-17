@@ -4,16 +4,31 @@ name: Build Windows executable
 #
 # ci.yml already builds and smoke-tests the same executable on every push —
 # that job exists to catch a broken build early, and its artifact expires with
-# the run. This workflow exists for the .exe itself: run it by hand from the
-# Actions tab ("Run workflow"), or push a tag like v1.3, and download
-# dist/Proteus.exe from the run's Artifacts once it finishes. It runs on a
-# genuine windows-latest runner — the only way to produce a real Windows
-# executable without a Windows machine of your own.
+# the run and needs a GitHub login to download even on a public repo. Two ways
+# to get the real thing out of this workflow instead:
+#
+#   * Actions tab -> "Run workflow" -> download the run's Artifact. Quick, but
+#     still a login-gated, expiring workflow artifact — fine for "let me just
+#     check this builds", not for handing someone a link.
+#   * Push a tag matching "v*" (e.g. v1.3). This does everything the manual
+#     run does, and additionally publishes a GitHub Release for that tag with
+#     Proteus.exe attached as a release asset. Release assets are public with
+#     no login required, and they do not expire — this is the one to use for
+#     "here, download Proteus".
+#
+# Either way it runs on a genuine windows-latest runner — the only way to
+# produce a real Windows executable without a Windows machine of your own.
 on:
   workflow_dispatch:
   push:
     tags:
       - "v*"
+
+# gh release create needs write access to repository contents; the default
+# GITHUB_TOKEN is read-only on repos/orgs that have tightened the default, so
+# this is requested explicitly rather than relying on that setting.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -52,3 +67,18 @@ jobs:
           name: Proteus-windows-exe
           path: dist/Proteus.exe
           if-no-files-found: error
+
+      # Only when this run was triggered by a tag: a manual dispatch has no
+      # tag to attach a release to. `gh` ships preinstalled on GitHub-hosted
+      # runners, so no extra action or credential is needed beyond the token.
+      # `--clobber` on the fallback covers re-running the workflow for a tag
+      # whose release already exists (e.g. after fixing a failed run).
+      - name: Publish a GitHub Release with the executable attached
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Proteus.exe \
+            --title "$GITHUB_REF_NAME" --generate-notes \
+            || gh release upload "$GITHUB_REF_NAME" dist/Proteus.exe --clobber

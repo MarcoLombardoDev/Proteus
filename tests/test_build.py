@@ -248,3 +248,29 @@ def test_the_windows_build_workflow_uploads_the_executable_build_py_produces():
 
     builder = build.RebrandingToolBuilder()
     assert upload["with"]["path"] == f"dist/{builder.app_name}.exe"
+
+
+def test_the_windows_build_workflow_can_write_repository_contents():
+    """
+    Without this, `gh release create` fails on any repo/org that has tightened
+    the default GITHUB_TOKEN permissions to read-only — a manual dispatch run
+    would still succeed, and only a tag push would ever exercise the failure.
+    """
+    workflow = _load_workflow("build.yml")
+    assert workflow["permissions"]["contents"] == "write"
+
+
+def test_a_tag_push_publishes_a_github_release_with_the_executable_attached():
+    """
+    A workflow artifact always needs a GitHub login and always expires — it
+    cannot be "here, download Proteus" material. Only a Release asset is
+    public and permanent, and only a tag carries the version number a Release
+    should be named after — so this step is gated on the ref being a tag, not
+    on `workflow_dispatch`.
+    """
+    job = _load_workflow("build.yml")["jobs"]["build"]
+    release_step = next(step for step in job["steps"]
+                        if "gh release" in step.get("run", ""))
+
+    assert release_step["if"] == "startsWith(github.ref, 'refs/tags/')"
+    assert "dist/Proteus.exe" in release_step["run"]

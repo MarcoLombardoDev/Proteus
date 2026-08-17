@@ -38,6 +38,14 @@ needs the `.exe` and has no Windows machine — `workflow_dispatch` (Actions tab
 from this session is not possible at all; that workflow is the only path to
 one, so keep it working even if `ci.yml`'s build job looks redundant with it.
 
+**A `v*` tag also publishes a GitHub Release, a manual dispatch does not.** A
+workflow artifact — from either workflow — always needs a GitHub login and
+always expires; it can never be "here, download Proteus". Only a tag push
+carries a version to name a Release after, so only that path runs a final
+`gh release create`/`gh release upload` step, attaching `Proteus.exe` as a
+public, non-expiring release asset. That step needs `permissions: contents:
+write`, since some orgs default `GITHUB_TOKEN` to read-only.
+
 ## Architecture
 
 | File | Rule |
