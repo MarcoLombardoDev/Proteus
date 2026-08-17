@@ -190,3 +190,61 @@ def test_pil_tkinter_finder_is_a_hidden_import():
     with open(build.__file__, encoding="utf-8") as fh:
         source = fh.read()
     assert "PIL._tkinter_finder" in source
+
+
+# ---------------------------------------------------------------------------
+# Getting a real .exe without a Windows machine
+# ---------------------------------------------------------------------------
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORKFLOWS_DIR = os.path.join(REPO, ".github", "workflows")
+
+
+def _load_workflow(name: str):
+    yaml = pytest.importorskip("yaml", reason="pyyaml is needed to check workflow files")
+    with open(os.path.join(WORKFLOWS_DIR, name), encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
+
+
+def test_every_workflow_file_is_valid_yaml():
+    """
+    A broken workflow file fails silently from here: GitHub just never shows
+    the run. Catching the syntax error in the test suite is much cheaper than
+    noticing its absence on the Actions tab.
+    """
+    for name in os.listdir(WORKFLOWS_DIR):
+        if name.endswith((".yml", ".yaml")):
+            assert _load_workflow(name), name
+
+
+def test_the_windows_build_workflow_can_be_triggered_by_hand():
+    """
+    The whole point of this workflow: producing a genuine .exe without a
+    Windows machine at hand. workflow_dispatch is what puts a "Run workflow"
+    button on the Actions tab; without it the workflow only fires on a tag.
+    """
+    workflow = _load_workflow("build.yml")
+    # PyYAML's 1.1 reader parses the bare `on:` key as the boolean True — a
+    # cosmetic quirk of the library, not of the workflow file. ci.yml, which
+    # already runs successfully on GitHub, parses the same way.
+    triggers = workflow[True]
+    assert "workflow_dispatch" in triggers
+
+
+def test_the_windows_build_workflow_runs_on_a_real_windows_runner():
+    job = _load_workflow("build.yml")["jobs"]["build"]
+    assert job["runs-on"] == "windows-latest"
+
+
+def test_the_windows_build_workflow_uploads_the_executable_build_py_produces():
+    """
+    Keyed off `RebrandingToolBuilder.app_name` rather than a hardcoded string,
+    so a renamed product does not leave the workflow uploading a file that no
+    longer exists.
+    """
+    job = _load_workflow("build.yml")["jobs"]["build"]
+    upload = next(step for step in job["steps"]
+                 if step.get("uses", "").startswith("actions/upload-artifact"))
+
+    builder = build.RebrandingToolBuilder()
+    assert upload["with"]["path"] == f"dist/{builder.app_name}.exe"

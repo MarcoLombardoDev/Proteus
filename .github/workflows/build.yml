@@ -1,0 +1,54 @@
+name: Build Windows executable
+
+# On-demand build of the real, distributable Proteus.exe.
+#
+# ci.yml already builds and smoke-tests the same executable on every push —
+# that job exists to catch a broken build early, and its artifact expires with
+# the run. This workflow exists for the .exe itself: run it by hand from the
+# Actions tab ("Run workflow"), or push a tag like v1.3, and download
+# dist/Proteus.exe from the run's Artifacts once it finishes. It runs on a
+# genuine windows-latest runner — the only way to produce a real Windows
+# executable without a Windows machine of your own.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build Proteus.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # requirements-dev.txt pulls in requirements.txt (which has pyinstaller)
+      # plus pytest, so one install covers both steps below.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # A manual dispatch can target any branch, including one ci.yml never
+      # tested — so this workflow verifies for itself rather than trusting
+      # that the ref already passed elsewhere.
+      - name: Run the test suite
+        run: python -m pytest
+
+      - name: Build
+        run: python build.py
+
+      - name: Smoke-test the executable
+        run: |
+          dist\Proteus.exe --version
+          dist\Proteus.exe --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Proteus-windows-exe
+          path: dist/Proteus.exe
+          if-no-files-found: error

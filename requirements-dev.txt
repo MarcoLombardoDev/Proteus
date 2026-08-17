@@ -15,3 +15,7 @@ pytest-timeout>=2.1
 # Screen capture for docs/generate_screenshots.py. Not needed to run or
 # test Proteus, only to regenerate the README images.
 mss>=9.0
+
+# Parses .github/workflows/*.yml so a broken workflow file is caught by the
+# test suite instead of by the next push failing silently on GitHub.
+pyyaml>=6.0
