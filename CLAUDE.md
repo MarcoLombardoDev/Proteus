@@ -28,7 +28,15 @@ xvfb-run -a python -m pytest     # Linux: the GUI tests need a display
 ```
 
 The whole suite must pass before anything is pushed. CI runs it on Ubuntu and
-Windows, against Python 3.10 and 3.12, then builds the Windows executables.
+Windows, against Python 3.10 and 3.12, then builds the Windows executable.
+
+**Two workflows build the executable, on purpose.** `ci.yml`'s build job runs
+on every push to catch a broken build early; its artifact is incidental.
+`.github/workflows/build.yml` is the one that matters when someone actually
+needs the `.exe` and has no Windows machine — `workflow_dispatch` (Actions tab
+→ Run workflow) or a `v*` tag triggers it. Building a real Windows executable
+from this session is not possible at all; that workflow is the only path to
+one, so keep it working even if `ci.yml`'s build job looks redundant with it.
 
 ## Architecture
 

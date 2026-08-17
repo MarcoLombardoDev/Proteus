@@ -913,6 +913,22 @@ The build script installs anything missing, picks the right `--add-data` separat
 platform, and falls back to the running interpreter when the Windows `py` launcher is not
 available.
 
+### Building without a Windows machine
+
+`build.py` has to run on Windows to produce a real `.exe` — PyInstaller cross-compiles for
+nothing. If you are on Linux or macOS,
+**[`.github/workflows/build.yml`](.github/workflows/build.yml)** does the build for you on a
+genuine `windows-latest` GitHub Actions runner:
+
+1. On GitHub, open **Actions → Build Windows executable → Run workflow**.
+2. Wait for the run to finish (a few minutes: it runs the test suite, then builds).
+3. Download `Proteus-windows-exe` from the run's **Artifacts** section.
+
+The same workflow also fires automatically when a tag matching `v*` is pushed, so tagging a
+release produces the executable without a manual step. It is separate from the build check
+in `ci.yml`, which runs on every push purely to catch a broken build early — that one exists
+to protect CI, this one exists to hand you a file.
+
 ---
 
 ## Development
