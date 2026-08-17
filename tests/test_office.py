@@ -143,7 +143,7 @@ def test_office_documents_are_recognised_by_extension(name, expected):
 def test_pictures_are_found_in_every_format(documents):
     for kind, prefix in (("docx", "word/media/"), ("pptx", "ppt/media/"),
                          ("xlsx", "xl/media/")):
-        images = office.list_images(documents[kind])
+        images, _ = office.list_images(documents[kind])
         assert images, f"no picture found in the {kind}"
         assert all(image.entry.startswith(prefix) for image in images)
         assert all(image.size > 0 for image in images)
@@ -154,7 +154,7 @@ def test_a_picture_used_twice_is_stored_once(documents):
     The logo sits in the body *and* the header of the report, yet Office keeps
     a single copy — so one replacement fixes both occurrences.
     """
-    images = office.list_images(documents["docx"])
+    images, _ = office.list_images(documents["docx"])
     assert len(images) == 1
 
     with zipfile.ZipFile(documents["docx"]) as package:
@@ -167,8 +167,8 @@ def test_listing_a_non_package_returns_nothing(tmp_path):
     """A corrupt or password-protected file is skipped, not fatal."""
     broken = tmp_path / "broken.docx"
     broken.write_bytes(b"this is not a zip")
-    assert office.list_images(str(broken)) == []
-    assert office.list_images(str(tmp_path / "missing.docx")) == []
+    assert office.list_images(str(broken))[0] == []
+    assert office.list_images(str(tmp_path / "missing.docx"))[0] == []
 
 
 def test_metafiles_are_ignored(tmp_path, documents):
@@ -180,7 +180,7 @@ def test_metafiles_are_ignored(tmp_path, documents):
             dst.writestr(info.filename, src.read(info.filename))
         dst.writestr("word/media/image9.emf", b"fake metafile")
 
-    entries = [image.entry for image in office.list_images(target)]
+    entries = [image.entry for image in office.list_images(target)[0]]
     assert "word/media/image9.emf" not in entries
 
 
@@ -193,7 +193,7 @@ def test_embedded_pictures_can_be_extracted_and_hashed(documents):
     old_hash = core.perceptual_hash(documents["old"])
 
     for kind in ("docx", "pptx", "xlsx"):
-        image = office.list_images(documents[kind])[0]
+        image = office.list_images(documents[kind])[0][0]
         temp = office.extract_to_temp(image.document, image.entry)
         assert temp and os.path.exists(temp)
         try:
@@ -208,7 +208,7 @@ def test_extracting_a_missing_entry_is_not_fatal(documents):
 
 
 def test_keys_round_trip(documents):
-    image = office.list_images(documents["docx"])[0]
+    image = office.list_images(documents["docx"])[0][0]
     assert office.is_embedded_key(image.key)
     assert office.split_key(image.key) == (image.document, image.entry)
     assert office.split_key("/plain/file.png") is None
@@ -222,7 +222,7 @@ def test_keys_round_trip(documents):
 @pytest.mark.parametrize("kind", ["docx", "pptx", "xlsx"])
 def test_replacement_changes_the_picture_and_keeps_the_document_valid(documents, kind):
     document = documents[kind]
-    entry = office.list_images(document)[0].entry
+    entry = office.list_images(document)[0][0].entry
     new_bytes = open(documents["new"], "rb").read()
 
     office.write_replacements(document, {entry: new_bytes})
@@ -252,7 +252,7 @@ def test_replacement_changes_the_picture_and_keeps_the_document_valid(documents,
 
 def test_untouched_entries_are_copied_byte_for_byte(documents):
     document = documents["docx"]
-    entry = office.list_images(document)[0].entry
+    entry = office.list_images(document)[0][0].entry
 
     with zipfile.ZipFile(document) as package:
         before = {name: package.read(name) for name in package.namelist()}
@@ -283,7 +283,7 @@ def test_entry_order_is_preserved(documents):
 def test_a_failed_rewrite_leaves_the_document_intact(documents, monkeypatch):
     """The package is rebuilt, so a failure must not destroy the original."""
     document = documents["docx"]
-    entry = office.list_images(document)[0].entry
+    entry = office.list_images(document)[0][0].entry
     original = open(document, "rb").read()
 
     real_writestr = zipfile.ZipFile.writestr
@@ -333,7 +333,7 @@ def test_the_frame_does_not_follow_the_picture(documents):
 
     square = mark(os.path.join(os.path.dirname(documents["new"]), "square.png"),
                   size=(200, 200), colour=(20, 90, 170))
-    entry = office.list_images(document)[0].entry
+    entry = office.list_images(document)[0][0].entry
     office.write_replacements(document, {entry: open(square, "rb").read()})
 
     after = docx.Document(document).inline_shapes[0]
@@ -386,7 +386,7 @@ def test_replacement_through_the_normal_pipeline(documents):
     assert report.ok == 3 and report.errors == 0
 
     for kind in ("docx", "pptx", "xlsx"):
-        entry = office.list_images(documents[kind])[0].entry
+        entry = office.list_images(documents[kind])[0][0].entry
         temp = office.extract_to_temp(documents[kind], entry)
         try:
             assert Image.open(temp).convert("RGB").getpixel((60, 40)) == (20, 90, 170)
@@ -453,7 +453,7 @@ def test_restore_brings_a_document_back(documents):
     report = core.restore_backups(documents["folder"])
     assert report.ok == 3
 
-    entry = office.list_images(documents["docx"])[0].entry
+    entry = office.list_images(documents["docx"])[0][0].entry
     temp = office.extract_to_temp(documents["docx"], entry)
     try:
         assert Image.open(temp).convert("RGB").getpixel((60, 40)) == (196, 62, 58)
@@ -465,3 +465,88 @@ def test_a_missing_document_is_reported_not_raised(tmp_path):
     outcome = core.replace_in_document(str(tmp_path / "gone.docx"),
                                        {"word/media/image1.png": "whatever"})
     assert outcome.status == "error"
+
+
+# ---------------------------------------------------------------------------
+# Reporting what cannot be done
+# ---------------------------------------------------------------------------
+
+def test_a_pasted_logo_is_reported_not_ignored(tmp_path):
+    """
+    Regression, and the commonest case of all.
+
+    Office stores a *pasted* logo as an EMF or WMF metafile. Pillow cannot
+    rasterise those, so they can be neither compared nor replaced — but they are
+    how most logos get into a corporate Word document. Returning nothing at all
+    left the commonest case silently unhandled, which is exactly what the
+    "nothing is skipped in silence" rule forbids.
+    """
+    import zipfile
+
+    document = str(tmp_path / "pasted.docx")
+    with zipfile.ZipFile(document, "w") as package:
+        package.writestr("[Content_Types].xml", "<Types/>")
+        package.writestr("word/document.xml", "<w:document/>")
+        package.writestr("word/media/image1.emf", b"\x01\x00\x00\x00fake-emf")
+
+    images, problems = office.list_images(document)
+
+    assert images == [], "an EMF cannot be compared or replaced"
+    assert len(problems) == 1
+    assert "image1.emf" in problems[0].reason
+    assert problems[0].hint, "a finding without a remedy is only half reported"
+
+
+def test_a_password_protected_document_says_so(tmp_path):
+    """
+    A protected .docx is an OLE compound file, not a ZIP, so it merely looks
+    corrupt. Saying "damaged" would send the user hunting the wrong problem.
+    """
+    document = str(tmp_path / "locked.docx")
+    with open(document, "wb") as handle:
+        handle.write(office.OLE_MAGIC + b"rest of an OLE container")
+
+    images, problems = office.list_images(document)
+
+    assert images == []
+    assert len(problems) == 1
+    assert "password" in problems[0].reason.lower()
+
+
+def test_a_damaged_document_is_reported(tmp_path):
+    document = str(tmp_path / "broken.docx")
+    with open(document, "wb") as handle:
+        handle.write(b"PK\x03\x04 truncated")
+
+    images, problems = office.list_images(document)
+    assert images == []
+    assert problems and problems[0].hint
+
+
+def test_a_clean_document_reports_nothing(documents):
+    """The bar has to stay silent when there is nothing to say."""
+    # The fixture also carries plain image paths and folders; only the packages
+    # are relevant here.
+    for kind in ("docx", "pptx", "xlsx"):
+        images, problems = office.list_images(documents[kind])
+        assert images, kind
+        assert problems == [], kind
+
+
+def test_the_scan_forwards_office_findings(tmp_path):
+    """End to end: the finding reaches the caller, not just the module."""
+    import zipfile
+
+    import core
+
+    folder = tmp_path / "share"
+    os.makedirs(folder, exist_ok=True)
+    with zipfile.ZipFile(str(folder / "pasted.docx"), "w") as package:
+        package.writestr("[Content_Types].xml", "<Types/>")
+        package.writestr("word/media/logo.wmf", b"fake-wmf")
+
+    seen = []
+    found = core.scan_office_documents(str(folder), on_problem=seen.append)
+
+    assert found == []
+    assert len(seen) == 1 and "logo.wmf" in seen[0].reason

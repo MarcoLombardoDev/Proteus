@@ -105,11 +105,11 @@ RASTER_FORMATS = SUPPORTED_FORMATS - NO_PIL_PREVIEW
 
 #: A finding the user has to act on by hand.
 #:
-#: Defined in `pdf.py` because that is where most of them arise, and re-exported
-#: here so callers have one place to import from. The rule it serves is absolute:
-#: anything Proteus notices but cannot deal with is reported, never dropped. A
-#: logo left in place without a word is worse than one openly refused.
-Problem = pdf_module.Problem
+#: Defined in `office.py`, the lowest-level module that produces them, and
+#: re-exported here so callers have one place to import from. The rule it serves
+#: is absolute: anything Proteus notices but cannot deal with is reported, never
+#: dropped. A logo left in place without a word is worse than one openly refused.
+Problem = office.Problem
 
 #: Suffix used for backups of the original files.
 BACKUP_SUFFIX = ".bak"
@@ -919,6 +919,7 @@ def scan_office_documents(
     progress: Callable[[int, int], None] | None = None,
     cancel_event: threading.Event | None = None,
     on_error: Callable[[str, Exception], None] | None = None,
+    on_problem: Callable[[Problem], None] | None = None,
 ) -> list[FileInfo]:
     """
     Find replaceable pictures inside the Office documents under `folder`.
@@ -927,6 +928,9 @@ def scan_office_documents(
     those that look like the old logo. Content matching is the sensible mode
     here: nobody names a picture inside a document, so `image1.png` tells you
     nothing about what it depicts.
+
+    Whatever cannot be handled — a pasted EMF/WMF logo, a password-protected or
+    damaged package — goes to `on_problem` rather than being dropped.
     """
     refs = reference_hashes(references) if references else []
     excluded = [os.path.realpath(d) for d in exclude_dirs if d]
@@ -953,11 +957,22 @@ def scan_office_documents(
     for index, document in enumerate(sorted(documents), 1):
         if cancel_event is not None and cancel_event.is_set():
             raise OperationCancelled()
-        for image in office.list_images(document):
+        images, problems = office.list_images(document)
+        for problem in problems:
+            if on_problem:
+                on_problem(problem)
+        for image in images:
             similarity = None
             if refs:
                 temp = office.extract_to_temp(document, image.entry)
                 if temp is None:
+                    if on_problem:
+                        on_problem(Problem(
+                            image.key,
+                            t("Image {name} could not be extracted for "
+                              "comparison.").format(name=image.name),
+                            t("Replace this picture by hand in the document."),
+                        ))
                     continue
                 try:
                     similarity = best_similarity(temp, refs)

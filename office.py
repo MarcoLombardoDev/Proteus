@@ -28,6 +28,8 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 
+from i18n import t
+
 #: Package formats built on OOXML. The macro-enabled and template variants use
 #: exactly the same layout, so they cost nothing extra to support.
 OFFICE_EXTENSIONS = frozenset({
@@ -43,10 +45,41 @@ EMBEDDED_IMAGE_EXTENSIONS = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp",
 })
 
+#: Vector metafiles Office writes when a logo is *pasted* rather than inserted.
+#: They cannot be replaced — but they are exactly where a corporate logo hides,
+#: so they are reported by name instead of quietly ignored.
+METAFILE_EXTENSIONS = frozenset({".emf", ".wmf"})
+
+#: First bytes of an OLE compound file. A password-protected .docx is one of
+#: these rather than a ZIP, which is why it looks "corrupt" from the outside.
+OLE_MAGIC = b"\xd0\xcf\x11\xe0"
+
 #: Separator between a document and an entry inside it, in the synthetic path
 #: used to identify an embedded image. Chosen because it cannot occur in a
 #: Windows or POSIX file name, so the two halves are always recoverable.
 ENTRY_SEPARATOR = "!/"
+
+
+@dataclass(frozen=True)
+class Problem:
+    """
+    Something Proteus found but cannot deal with on its own.
+
+    The whole point of this type is that it reaches the user. A rebranding that
+    quietly leaves three logos in place is worse than one that stops and names
+    them, because nobody goes looking for a failure they were never told about.
+
+    It lives here rather than in `pdf.py` because both document formats produce
+    them, and `pdf.py` already depends on this module.
+    """
+
+    path: str            # file, or `document!/entry` when it is one picture
+    reason: str          # what is wrong, already translated
+    hint: str = ""       # what the user can do by hand
+
+    @property
+    def name(self) -> str:
+        return os.path.basename(self.path.split(ENTRY_SEPARATOR)[0])
 
 
 @dataclass(frozen=True)
@@ -90,18 +123,31 @@ def is_embedded_key(key: str) -> bool:
     return ENTRY_SEPARATOR in key
 
 
-def list_images(document: str) -> list[EmbeddedImage]:
+def list_images(document: str) -> tuple[list[EmbeddedImage], list[Problem]]:
     """
-    Every replaceable picture inside `document`.
+    Every replaceable picture inside `document`, plus what could not be handled.
 
-    Returns an empty list rather than raising when the file is not a readable
-    package: a corrupt or password-protected document should be skipped, not
-    abort a scan of ten thousand files.
+    Never raises: a corrupt document must not abort a scan of ten thousand
+    files. But it is not silent either — the second half of the return value
+    carries everything that was noticed and skipped, so it can be put in front
+    of the user. The two cases that matter in practice:
+
+    * **a pasted logo.** Office stores it as an EMF or WMF metafile, which
+      cannot be rasterised, compared or previewed. This is how most logos end
+      up in a corporate Word document, so saying nothing about it would leave
+      the commonest case silently unhandled.
+    * **a package that will not open**, because it is damaged or
+      password-protected. A protected .docx is an OLE compound file rather than
+      a ZIP, which is worth telling the user, since "corrupt" would send them
+      looking for the wrong problem.
     """
     if not is_office_document(document):
-        return []
+        return [], []
 
     found: list[EmbeddedImage] = []
+    problems: list[Problem] = []
+    metafiles: list[str] = []
+
     try:
         with zipfile.ZipFile(document) as package:
             for info in package.infolist():
@@ -111,16 +157,45 @@ def list_images(document: str) -> list[EmbeddedImage]:
                 # word/media/, ppt/media/, xl/media/.
                 if "/media/" not in info.filename:
                     continue
-                if posixpath.splitext(info.filename)[1].lower() \
-                        not in EMBEDDED_IMAGE_EXTENSIONS:
+                ext = posixpath.splitext(info.filename)[1].lower()
+                if ext in METAFILE_EXTENSIONS:
+                    metafiles.append(posixpath.basename(info.filename))
+                    continue
+                if ext not in EMBEDDED_IMAGE_EXTENSIONS:
                     continue
                 found.append(EmbeddedImage(document=document,
                                            entry=info.filename,
                                            size=info.file_size))
-    except (zipfile.BadZipFile, OSError, RuntimeError):
-        return []
+    except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
+        return [], [Problem(document, *_unreadable(document, exc))]
 
-    return sorted(found, key=lambda image: image.entry)
+    if metafiles:
+        problems.append(Problem(
+            document,
+            t("Contains {count} pasted image(s) ({names}) that cannot be "
+              "replaced automatically.").format(count=len(metafiles),
+                                                names=", ".join(metafiles[:3])),
+            t("Open the document, delete the pasted logo and insert the new "
+              "one with Insert > Pictures."),
+        ))
+
+    return sorted(found, key=lambda image: image.entry), problems
+
+
+def _unreadable(document: str, exc: Exception) -> tuple[str, str]:
+    """Reason and remedy for a package that would not open."""
+    try:
+        with open(document, "rb") as handle:
+            protected = handle.read(4) == OLE_MAGIC
+    except OSError:
+        protected = False
+
+    if protected:
+        return (t("This document is password-protected, so its images cannot "
+                  "be read."),
+                t("Remove the password, then run the scan again."))
+    return (t("This document could not be opened: {error}").format(error=exc),
+            t("Open it in Office to check it is not damaged."))
 
 
 def extract(document: str, entry: str) -> bytes | None:

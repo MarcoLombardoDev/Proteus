@@ -20,7 +20,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: Every module that puts text in front of a user. A module missing here
 #: makes the stale-entry guard report its strings as unused, and lets its
 #: untranslated ones through unnoticed.
-TRANSLATED_MODULES = ("core.py", "rebranding_tool.py", "pdf.py", "cli.py")
+TRANSLATED_MODULES = ("core.py", "rebranding_tool.py", "pdf.py", "office.py",
+                      "cli.py")
 
 
 # ---------------------------------------------------------------------------

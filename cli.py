@@ -211,6 +211,7 @@ def collect_targets(args, reporter: Reporter) -> list[core.FileInfo]:
             references=args.reference if by_content else (),
             threshold=args.similarity / 100.0,
             exclude_dirs=exclude, on_error=walk_error,
+            on_problem=reporter.finding,
             progress=lambda d, t: reporter.progress("documents", d, t),
         ))
 

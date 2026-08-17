@@ -1255,6 +1255,15 @@ class RebrandingToolApp:
                 t("Analysing files... {done}/{total}").format(done=index, total=total),
             )
 
+        def on_problem(problem):
+            """
+            Surface a finding. Shared by both document scans: the rule that
+            nothing is dropped is not per-format.
+            """
+            self._problems.append(problem)
+            self.log(t("  Needs attention: {path} — {reason}").format(
+                path=problem.path, reason=problem.reason), logging.WARNING)
+
         if include_office:
             def document_progress(done: int, of: int):
                 self._set_progress(
@@ -1271,6 +1280,7 @@ class RebrandingToolApp:
                 progress=document_progress,
                 cancel_event=self._cancel_event,
                 on_error=walk_error,
+                on_problem=on_problem,
             )
             self.log(t("Pictures found inside documents: {count}").format(
                 count=len(embedded)))
@@ -1282,11 +1292,6 @@ class RebrandingToolApp:
                     done / max(of, 1) * 100,
                     t("Scanning PDFs... {done}/{total}").format(done=done, total=of),
                 )
-
-            def on_problem(problem):
-                self._problems.append(problem)
-                self.log(t("  Needs attention: {path} — {reason}").format(
-                    path=problem.path, reason=problem.reason), logging.WARNING)
 
             in_pdfs = core.scan_pdf_documents(
                 scan,

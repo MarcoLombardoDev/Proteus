@@ -36,7 +36,7 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
 |---|---|
 | `core.py` | **No tkinter import, ever.** This is what makes the logic testable headless and reusable from `cli.py`. |
 | `rebranding_tool.py` | Presentation only. |
-| `office.py` | Standard library only — no Office-format dependency ships at runtime. |
+| `office.py` | Standard library only — no Office-format dependency ships at runtime. Also the home of `Problem`, since `pdf.py` depends on this module. |
 | `pdf.py` | `pypdf` only, and only through its own `ImageFile.replace()`. Hand-rolled byte surgery works on simple PDFs and breaks on object streams. |
 | `cli.py` | Everything the interface does, without a display. |
 
@@ -58,10 +58,13 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
   `PdfWriter(clone_from=…)` renumbers objects, so a number captured while
   scanning cannot find the picture again while writing. The stream size is
   checked before the write to catch a document that changed in between.
-- **Anything found but not replaceable must be reported.** `pdf.Problem`
+- **Anything found but not replaceable must be reported.** `office.Problem`
   carries a reason *and* a remedy; findings reach the interface, the log,
   stderr and exit code 5. A logo silently left in place is the worst outcome
   this tool has — worse than refusing. Never add a code path that drops one.
+  This was retrofitted once already: `office.list_images` used to return `[]`
+  for a pasted EMF logo and for a password-protected package, which meant the
+  commonest case of all was skipped without a word.
 
 ## Documentation and licensing
 
