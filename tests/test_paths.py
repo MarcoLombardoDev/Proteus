@@ -229,26 +229,43 @@ def test_a_path_past_max_path_can_really_be_replaced(tmp_path):
 
 @windows_only
 def test_a_file_open_elsewhere_is_reported_with_its_remedy(tmp_path):
-    """A document open in Word is the commonest failure on a live share."""
+    """
+    A document open in Word is the commonest failure on a live share.
+
+    Reproducing it needs care, and the first attempt did not. `msvcrt.locking`
+    locks a byte range, which `os.replace` never consults, and CPython opens
+    files with FILE_SHARE_DELETE — so holding the file with a plain `open()`
+    does not block the replacement at all. CI proved it: the test self-skipped
+    on Windows with "allowed the replace despite the lock", verifying nothing.
+
+    Word holds the file with a restrictive share mode, so that is what this
+    does: CreateFileW with dwShareMode = 0. No extra dependency, just ctypes.
+    """
+    import ctypes
+
     target = tmp_path / "logo.png"
     source = tmp_path / "new.png"
     target.write_bytes(b"old")
     source.write_bytes(b"new")
 
-    import msvcrt
+    GENERIC_READ = 0x80000000
+    OPEN_EXISTING = 3
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 
-    handle = open(target, "r+b")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = ctypes.c_void_p
+    handle = kernel32.CreateFileW(str(target), GENERIC_READ,
+                                  0,           # exclusive: what Word does
+                                  None, OPEN_EXISTING, 0, None)
+    assert handle != INVALID_HANDLE_VALUE, (
+        f"could not open exclusively: {ctypes.get_last_error()}")
+
     try:
-        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
         outcome = core.replace_file(str(target), str(source), backup=False)
     finally:
-        try:
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-        except OSError:
-            pass
-        handle.close()
+        kernel32.CloseHandle(ctypes.c_void_p(handle))
 
-    if outcome.ok:
-        pytest.skip("this Windows build allowed the replace despite the lock")
-    assert outcome.status == "error"
-    assert outcome.message, "a failure must always explain itself"
+    assert outcome.status == "error", "an exclusively held file must not be replaced"
+    assert "open in another program" in outcome.message, outcome.message
+    assert "Close the file" in outcome.message
+    assert target.read_bytes() == b"old", "the original must survive"
