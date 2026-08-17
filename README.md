@@ -918,16 +918,20 @@ available.
 `build.py` has to run on Windows to produce a real `.exe` — PyInstaller cross-compiles for
 nothing. If you are on Linux or macOS,
 **[`.github/workflows/build.yml`](.github/workflows/build.yml)** does the build for you on a
-genuine `windows-latest` GitHub Actions runner:
+genuine `windows-latest` GitHub Actions runner, in one of two ways:
 
-1. On GitHub, open **Actions → Build Windows executable → Run workflow**.
-2. Wait for the run to finish (a few minutes: it runs the test suite, then builds).
-3. Download `Proteus-windows-exe` from the run's **Artifacts** section.
+1. **Manual run, for a quick check.** On GitHub, open **Actions → Build Windows executable →
+   Run workflow**, wait for it to finish (a few minutes: it runs the test suite, then builds),
+   then download `Proteus-windows-exe` from the run's **Artifacts** section. This download
+   requires a GitHub login and expires after 90 days, same as any workflow artifact — fine for
+   "does this still build", not for handing someone a link.
+2. **Push a tag matching `v*` (e.g. `v1.3`), to actually publish the release.** This runs the
+   same test-and-build steps, and additionally publishes a **GitHub Release** for that tag with
+   `Proteus.exe` attached as a release asset. Release assets need no login and never expire —
+   this is the one to use for "here, download Proteus".
 
-The same workflow also fires automatically when a tag matching `v*` is pushed, so tagging a
-release produces the executable without a manual step. It is separate from the build check
-in `ci.yml`, which runs on every push purely to catch a broken build early — that one exists
-to protect CI, this one exists to hand you a file.
+Either path is separate from the build check in `ci.yml`, which runs on every push purely to
+catch a broken build early — that one exists to protect CI, this one exists to hand you a file.
 
 ---
 
