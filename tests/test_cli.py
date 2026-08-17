@@ -369,3 +369,98 @@ def test_an_interruption_uses_the_conventional_exit_code(monkeypatch):
     monkeypatch.setattr(cli, "main", lambda *a, **k: (_ for _ in ()).throw(
         KeyboardInterrupt()))
     assert cli.entry_point() == cli.EXIT_INTERRUPTED
+
+
+# ---------------------------------------------------------------------------
+# PDF support, and the rule that nothing is dropped silently
+# ---------------------------------------------------------------------------
+
+def _pdf_tree(tmp_path):
+    """A share with one replaceable PDF and one vector-only PDF."""
+    pytest.importorskip("pypdf")
+    from PIL import Image
+    from pypdf.generic import DecodedStreamObject, NameObject
+    import pypdf
+
+    scan = tmp_path / "share"
+    os.makedirs(scan, exist_ok=True)
+    logo = mark(tmp_path / "assets" / "old.png")
+    Image.open(logo).convert("RGB").save(str(scan / "brochure.pdf"))
+
+    writer = pypdf.PdfWriter()
+    page = writer.add_blank_page(200, 100)
+    content = DecodedStreamObject()
+    content.set_data(b"0.77 0.24 0.23 rg 10 20 100 50 re f")
+    page[NameObject("/Contents")] = writer._add_object(content)
+    with open(str(scan / "flyer.pdf"), "wb") as handle:
+        writer.write(handle)
+
+    mark(tmp_path / "new" / "brand.png", colour=(20, 90, 170))
+    return {"scan": str(scan), "source": str(tmp_path / "new")}
+
+
+def test_pdf_images_are_found_when_asked(tmp_path, capsys):
+    tree = _pdf_tree(tmp_path)
+    run("--scan", tree["scan"], "--source", tree["source"], "--pdf", "--verbose")
+    assert "brochure.pdf!/p1i1" in capsys.readouterr().out
+
+
+def test_a_finding_changes_the_exit_code(tmp_path, capsys):
+    """
+    The rule, expressed where it matters most.
+
+    A scheduled job reads the exit code and nothing else. A run that replaced
+    what it could but left a vector logo behind must not look like a clean one,
+    or nobody will ever go and fix it by hand.
+    """
+    tree = _pdf_tree(tmp_path)
+    code = run("--scan", tree["scan"], "--source", tree["source"],
+               "--pattern", "*.pdf", "--pdf", "--apply")
+
+    assert code == cli.EXIT_ATTENTION
+    captured = capsys.readouterr()
+    assert "flyer.pdf" in captured.err
+    assert "vector" in captured.err.lower()
+    assert "need manual intervention" in captured.err
+
+
+def test_a_finding_carries_a_remedy(tmp_path, capsys):
+    tree = _pdf_tree(tmp_path)
+    run("--scan", tree["scan"], "--source", tree["source"],
+        "--pattern", "*.pdf", "--pdf")
+    assert "->" in capsys.readouterr().err, "a problem needs a suggested fix"
+
+
+def test_findings_survive_quiet(tmp_path, capsys):
+    """--quiet silences progress, never something needing a human."""
+    tree = _pdf_tree(tmp_path)
+    code = run("--scan", tree["scan"], "--source", tree["source"],
+               "--pattern", "*.pdf", "--pdf", "--quiet")
+    captured = capsys.readouterr()
+
+    assert code == cli.EXIT_ATTENTION
+    assert captured.out.strip() == ""
+    assert "flyer.pdf" in captured.err
+
+
+def test_a_clean_pdf_run_still_exits_zero(tmp_path):
+    """The attention code must mean something, so it cannot be the default."""
+    pytest.importorskip("pypdf")
+    from PIL import Image
+
+    scan = tmp_path / "share"
+    os.makedirs(scan, exist_ok=True)
+    Image.open(mark(tmp_path / "a" / "old.png")).convert("RGB").save(
+        str(scan / "brochure.pdf"))
+    mark(tmp_path / "new" / "brand.png", colour=(20, 90, 170))
+
+    code = run("--scan", str(scan), "--source", str(tmp_path / "new"),
+               "--pdf", "--apply")
+    assert code == cli.EXIT_OK
+
+
+def test_pdf_alone_is_enough_to_start(tmp_path):
+    """--pdf is a source of work in its own right, like --office."""
+    tree = _pdf_tree(tmp_path)
+    assert run("--scan", tree["scan"], "--source", tree["source"],
+               "--pdf") in (cli.EXIT_OK, cli.EXIT_ATTENTION)

@@ -20,7 +20,14 @@ The exit code is the real return value — a scheduler reads that, not the log:
     2  nothing matched
     3  the request itself was wrong (bad folders, bad pattern)
     4  refused on safety grounds
+    5  finished, but something needs a human: see the reported problems
     130 interrupted
+
+Exit code 5 exists because of one rule that holds everywhere in Proteus: if a
+file that may carry the logo cannot be dealt with — an encrypted or signed PDF,
+a vector logo, an unreadable image — it is **reported, never dropped**. In a
+scheduled job the exit code is the only thing anyone reads, so a run that left
+work undone must not look identical to a clean one.
 
 Examples
 --------
@@ -48,6 +55,8 @@ EXIT_ERRORS = 1
 EXIT_NOTHING_FOUND = 2
 EXIT_BAD_REQUEST = 3
 EXIT_REFUSED = 4
+#: The run did what it could, but some findings need manual intervention.
+EXIT_ATTENTION = 5
 EXIT_INTERRUPTED = 130
 
 #: How often progress is reported, in seconds. A scheduled job writes to a log
@@ -62,6 +71,9 @@ class Reporter:
         self.quiet = quiet
         self.verbose = verbose
         self._last = 0.0
+        #: Problems reported during the run, kept so the summary and the exit
+        #: code can account for them.
+        self.findings: list = []
 
     def say(self, message: str) -> None:
         if not self.quiet:
@@ -73,6 +85,19 @@ class Reporter:
 
     def problem(self, message: str) -> None:
         print(message, file=sys.stderr, flush=True)
+
+    def finding(self, problem) -> None:
+        """
+        Report something the user must handle by hand.
+
+        Goes to stderr and survives --quiet: the whole reason this exists is
+        that it must not be possible to miss it.
+        """
+        self.findings.append(problem)
+        print(f"  ! {problem.path}", file=sys.stderr, flush=True)
+        print(f"    {problem.reason}", file=sys.stderr, flush=True)
+        if problem.hint:
+            print(f"    -> {problem.hint}", file=sys.stderr, flush=True)
 
     def progress(self, label: str, done: int, total: int) -> None:
         """Throttled progress, so a long scan does not flood the log."""
@@ -91,7 +116,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Bulk-replace logos across a folder tree, unattended.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Exit codes: 0 ok · 1 errors · 2 nothing found · 3 bad request "
-               "· 4 refused on safety grounds",
+               "· 4 refused on safety grounds · 5 finished, but something "
+               "needs a human",
     )
 
     parser.add_argument("--version", action="version",
@@ -117,6 +143,9 @@ def build_parser() -> argparse.ArgumentParser:
                           f"(default: {int(core.DEFAULT_SIMILARITY * 100)})")
     how.add_argument("--office", action="store_true",
                      help="also look inside .docx/.pptx/.xlsx documents")
+    how.add_argument("--pdf", action="store_true",
+                     help="also look inside PDF files (raster images only; a "
+                          "vector logo is reported, not replaced)")
 
     action = parser.add_argument_group("what to do")
     action.add_argument("--apply", action="store_true",
@@ -183,6 +212,18 @@ def collect_targets(args, reporter: Reporter) -> list[core.FileInfo]:
             threshold=args.similarity / 100.0,
             exclude_dirs=exclude, on_error=walk_error,
             progress=lambda d, t: reporter.progress("documents", d, t),
+        ))
+
+    if args.pdf:
+        reporter.say("Looking inside PDF files...")
+        targets.extend(core.scan_pdf_documents(
+            args.scan,
+            patterns=core.parse_patterns(args.pattern),
+            references=args.reference if by_content else (),
+            threshold=args.similarity / 100.0,
+            exclude_dirs=exclude, on_error=walk_error,
+            on_problem=reporter.finding,
+            progress=lambda d, t: reporter.progress("PDFs", d, t),
         ))
 
     return targets
@@ -266,11 +307,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.source:
         parser.error("--source is required (or use --restore)")
-    if not args.pattern and not args.reference and not args.office:
-        parser.error("give at least one of --pattern, --reference or --office")
+    if not args.pattern and not args.reference and not args.office and not args.pdf:
+        parser.error("give at least one of --pattern, --reference, --office or --pdf")
 
-    problems = core.validate_config(args.source, args.scan, args.pattern,
-                                    require_pattern=not (args.reference or args.office))
+    problems = core.validate_config(
+        args.source, args.scan, args.pattern,
+        require_pattern=not (args.reference or args.office or args.pdf))
     if args.reference:
         problems += core.validate_references(args.reference)
     if problems:
@@ -285,7 +327,9 @@ def main(argv: list[str] | None = None) -> int:
     targets = collect_targets(args, reporter)
     if not targets:
         reporter.say("Nothing matched.")
-        return EXIT_NOTHING_FOUND
+        # A scan that found nothing replaceable but did hit problems has not
+        # succeeded — it has found work for a person.
+        return _finish(EXIT_NOTHING_FOUND, reporter)
 
     embedded = sum(1 for target in targets if target.embedded)
     reporter.say(f"Found {len(targets)} files"
@@ -312,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
     if not usable:
         reporter.say("Nothing to replace.")
         _write_report(args, matches, reporter)
-        return EXIT_NOTHING_FOUND
+        return _finish(EXIT_NOTHING_FOUND, reporter)
 
     refusal = check_safety(args, usable, reporter)
     if refusal is not None:
@@ -340,7 +384,25 @@ def main(argv: list[str] | None = None) -> int:
         reporter.say("Dry run: nothing was written. Add --apply to do it.")
 
     _write_report(args, matches, reporter, report)
-    return EXIT_ERRORS if report.errors else EXIT_OK
+    if report.errors:
+        return EXIT_ERRORS
+    return _finish(EXIT_OK, reporter)
+
+
+def _finish(code: int, reporter: Reporter) -> int:
+    """
+    Final word on the run, accounting for anything left to a human.
+
+    A clean exit code on a run that quietly skipped three logos is the failure
+    this whole mechanism exists to prevent: in an unattended job the exit code
+    is all anyone sees, so unfinished business has to change it.
+    """
+    if not reporter.findings:
+        return code
+    reporter.problem(
+        f"{len(reporter.findings)} finding(s) need manual intervention "
+        f"(listed above). Nothing else was left undone.")
+    return EXIT_ATTENTION if code == EXIT_OK else code
 
 
 def _write_report(args, matches, reporter: Reporter,

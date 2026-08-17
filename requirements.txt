@@ -8,5 +8,15 @@ pillow>=9.1,<13
 # the app no longer uses it, so either major version is fine.
 ttkbootstrap>=1.10
 
+# Needed to find and replace images inside PDF files. BSD-3-Clause, which is
+# what makes it usable here: COMMERCIAL-LICENSE.md promises buyers that no
+# dependency imposes copyleft, so PyMuPDF (AGPL or a paid Artifex licence) is
+# ruled out however convenient it would be.
+#
+# Optional at runtime: without it the application starts and does everything
+# else, and the PDF option reports that the package is missing instead of
+# failing. It is listed here because PDF support is part of the product.
+pypdf>=4.0
+
 # Needed only to build the standalone executable (build.py).
 pyinstaller>=5.13

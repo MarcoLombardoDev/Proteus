@@ -111,11 +111,52 @@ def build_sample_tree(root: str) -> tuple[str, str]:
     _sample_document(os.path.join(scan, "reports", "annual_report.docx"),
                      os.path.join(scan, "website", "logo_header.png"))
 
+    # A PDF carrying the same logo as a raster image, and one whose artwork is
+    # vector-only. The second is there on purpose: it is the case Proteus cannot
+    # replace and therefore has to report, and a screenshot of that is worth more
+    # than a paragraph claiming it happens.
+    _sample_pdf(os.path.join(scan, "print", "brochure.pdf"),
+                os.path.join(scan, "website", "logo_header.png"))
+    _vector_pdf(os.path.join(scan, "print", "flyer_vector.pdf"))
+
     # A reference copy of the OLD logo, for the content-search screenshot. It
     # lives outside the scanned tree, as a real one would.
     png(os.path.join(root, "reference"), "old_logo.png", (240, 80), OLD_COLOUR)
 
     return scan, source
+
+
+def _sample_pdf(path: str, image: str) -> None:
+    """A one-page PDF holding `image` as a raster picture."""
+    from PIL import Image
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    Image.open(image).convert("RGB").save(path)
+
+
+def _vector_pdf(path: str) -> bool:
+    """
+    A PDF whose logo is drawn with path operators, if pypdf is installed.
+
+    Proteus cannot see a vector logo, which is exactly why this file is in the
+    sample data: it makes the "needs manual attention" report appear.
+    """
+    try:
+        import pypdf
+        from pypdf.generic import DecodedStreamObject, NameObject
+    except ImportError:
+        print("  (pypdf not installed: skipping the vector PDF sample)")
+        return False
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    writer = pypdf.PdfWriter()
+    page = writer.add_blank_page(240, 80)
+    content = DecodedStreamObject()
+    content.set_data(b"0.77 0.24 0.23 rg 12 20 90 40 re f")
+    page[NameObject("/Contents")] = writer._add_object(content)
+    with open(path, "wb") as handle:
+        writer.write(handle)
+    return True
 
 
 def _sample_document(path: str, image: str) -> bool:
@@ -301,6 +342,7 @@ def main(argv: list[str]) -> int:
             "scan_folder": scan,
             "search_pattern": "logo*",
             "include_office": True,
+            "include_pdf": True,
             "backup": True,
             "dry_run": False,
         })
@@ -381,7 +423,9 @@ def shoot_command_line(workdir: str, scan: str, source: str,
         run_cli(workdir, *common, "--pattern", "logo*.png", "--verbose"),
         run_cli(workdir, *common, "--reference", reference,
                 "--similarity", "70", "--office", "--apply"),
-        run_cli(workdir, *common, "--pattern", "logo*.png", "--apply"),
+        # Names the PDFs explicitly, which is what makes a vector-only file a
+        # finding rather than noise — and shows exit code 5.
+        run_cli(workdir, *common, "--pattern", "*.pdf", "--pdf", "--apply"),
     ]
     path = os.path.join(outdir, f"{CLI_SHOT}.png")
     render_terminal(path, blocks)

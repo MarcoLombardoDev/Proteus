@@ -37,6 +37,7 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
 | `core.py` | **No tkinter import, ever.** This is what makes the logic testable headless and reusable from `cli.py`. |
 | `rebranding_tool.py` | Presentation only. |
 | `office.py` | Standard library only — no Office-format dependency ships at runtime. |
+| `pdf.py` | `pypdf` only, and only through its own `ImageFile.replace()`. Hand-rolled byte surgery works on simple PDFs and breaks on object streams. |
 | `cli.py` | Everything the interface does, without a display. |
 
 ## Things that will bite you
@@ -53,6 +54,14 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
   session-scoped for this reason.
 - **Writes must stay atomic**: temporary file in the same folder, then
   `os.replace`. Backups never clobber an existing `.bak`.
+- **A PDF image is identified by position (`p2i1`), never by object number.**
+  `PdfWriter(clone_from=…)` renumbers objects, so a number captured while
+  scanning cannot find the picture again while writing. The stream size is
+  checked before the write to catch a document that changed in between.
+- **Anything found but not replaceable must be reported.** `pdf.Problem`
+  carries a reason *and* a remedy; findings reach the interface, the log,
+  stderr and exit code 5. A logo silently left in place is the worst outcome
+  this tool has — worse than refusing. Never add a code path that drops one.
 
 ## Documentation and licensing
 
@@ -114,6 +123,8 @@ permissive (MIT / BSD / Apache-2.0 / PSF / HPND) is fine, copyleft or
 code, and the buyer would need a second one.
 
 Iris had to swap PyMuPDF (AGPL-3.0 or Artifex commercial) for `pypdf`
-(BSD-3-Clause) for exactly this reason. Proteus's tree is clean — keep it that way.
+(BSD-3-Clause) for exactly this reason, and Proteus chose `pypdf` from the start
+for PDF support on the same grounds — a buyer must not need a second licence from
+a third party to ship the product. Proteus's tree is clean — keep it that way.
 PyInstaller is GPL-2.0 **with the bootloader exception**, which exists precisely to
 allow proprietary frozen applications, so that one is fine.
