@@ -71,14 +71,35 @@ jobs:
       # Only when this run was triggered by a tag: a manual dispatch has no
       # tag to attach a release to. `gh` ships preinstalled on GitHub-hosted
       # runners, so no extra action or credential is needed beyond the token.
-      # `--clobber` on the fallback covers re-running the workflow for a tag
-      # whose release already exists (e.g. after fixing a failed run).
+      #
+      # --generate-notes reads the commit log since the last tag. That fits a
+      # repo built on PRs; this one pushes straight to main, so the "notes"
+      # would just be the latest commit message — internal engineering text,
+      # not something a downloader should read as "what's new". A short fixed
+      # blurb replaces it.
+      #
+      # `gh release create` fails outright if a release for this tag already
+      # exists — which happens if the tag was made via GitHub's "Draft a new
+      # release" page, since that creates the release object together with
+      # the tag. The fallback covers that: `gh release edit` applies the same
+      # title/notes to the pre-existing release, then the asset is attached
+      # either way.
       - name: Publish a GitHub Release with the executable attached
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TITLE: "Proteus ${{ github.ref_name }}"
+          RELEASE_NOTES: >-
+            Standalone Windows executable — no Python installation needed.
+            Download Proteus.exe below and run it: double-click for the
+            interface, or `Proteus.exe --help` from a terminal for the
+            command line (including `--audit`, which reports without ever
+            writing anything).
         run: |
           gh release create "$GITHUB_REF_NAME" dist/Proteus.exe \
-            --title "$GITHUB_REF_NAME" --generate-notes \
-            || gh release upload "$GITHUB_REF_NAME" dist/Proteus.exe --clobber
+            --title "$RELEASE_TITLE" --notes "$RELEASE_NOTES" \
+          || {
+            gh release edit "$GITHUB_REF_NAME" --title "$RELEASE_TITLE" --notes "$RELEASE_NOTES"
+            gh release upload "$GITHUB_REF_NAME" dist/Proteus.exe --clobber
+          }
