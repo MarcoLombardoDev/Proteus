@@ -40,6 +40,7 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
 | `pdf.py` | `pypdf` only, and only through its own `ImageFile.replace()`. Hand-rolled byte surgery works on simple PDFs and breaks on object streams. |
 | `paths.py` | Windows long paths and readable filesystem errors. Lowest module after `i18n`, so anything may import it. |
 | `cli.py` | Everything the interface does, without a display. |
+| `build.py` | Builds **one** executable, `--console`, not two. `main.py._hide_console_window()` hides the flash of a console when the GUI branch runs. Do not reintroduce a second `--windowed` binary — that was tried and reverted; see below. |
 
 ## Things that will bite you
 
@@ -72,6 +73,10 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
   This was retrofitted once already: `office.list_images` used to return `[]`
   for a pasted EMF logo and for a password-protected package, which meant the
   commonest case of all was skipped without a word.
+- **`_hide_console_window()` in `main.py` only fires when `sys.frozen` is set.**
+  Running from source must never touch the console — there is a real terminal
+  there, and hiding it would hide the shell the developer is working in. It is
+  also a no-op off Windows. Guard both, in that order, before touching `ctypes`.
 
 ## Documentation and licensing
 

@@ -713,13 +713,12 @@ log and an alert channel:
 ```powershell
 # Windows Task Scheduler
 schtasks /create /tn "Rebranding" /sc weekly /d SUN /st 03:00 /tr `
-  "C:\Proteus\proteus-cli.exe --scan \\fs01\shares --source C:\Brand\2026 --pattern logo*.png --apply"
+  "C:\Proteus\Proteus.exe --scan \\fs01\shares --source C:\Brand\2026 --pattern logo*.png --apply"
 ```
 
-On Windows use **`proteus-cli.exe`**, not `Proteus.exe`. The interface binary is built
-`--windowed` and therefore has no console at all: it would run correctly but print nothing,
-leaving a failed job undiagnosable. The two binaries share one entry point and differ only
-in that.
+`Proteus.exe` is the one executable for both uses — see
+[Building a standalone executable](#building-a-standalone-executable) for how it manages
+to be both a console program and a double-clickable app.
 
 ### Trying it safely
 
@@ -889,17 +888,26 @@ rotate at 2 MB, keeping five files.
 python build.py
 ```
 
-On Windows, `compile.bat` does the same. The result is **two** single-file binaries in
-`dist/`, with the icon embedded and a `logs/` folder prepared alongside them:
+On Windows, `compile.bat` does the same. The result is **one** single-file executable in
+`dist/Proteus.exe` (~21 MB), with the icon embedded and a `logs/` folder prepared alongside
+it — usable both ways:
 
-| Binary | Built | For |
-|---|---|---|
-| `Proteus.exe` (~21 MB) | `--windowed` | The interface |
-| `proteus-cli.exe` | `--console` | Scripts and scheduled jobs |
+```
+Proteus.exe                    opens the interface
+Proteus.exe --help             the command line, for scripts and scheduled jobs
+```
 
-They share one entry point and differ only in that flag. The split is not cosmetic: a
-`--windowed` executable has no console on Windows, so a CLI run through it would print
-nothing at all and a failed job could not be diagnosed.
+That takes a deliberate trade-off to pull off. PyInstaller builds an executable as either
+`--windowed` or `--console`, not both: a `--windowed` one has no console at all, so the CLI
+half would print into nothing, and a failed scheduled job could never be diagnosed. So the
+build is `--console`, which means double-clicking it for the *interface* would normally
+flash a console window open first. `main.py` hides that window itself — via
+`GetConsoleWindow`/`ShowWindow`, before the GUI branch does anything else — the moment it
+determines no arguments were given. The trade is a brief flash for shipping one file
+instead of two; it is cosmetic, not a bug to chase further.
+
+Running from source (`python main.py`) never shows this at all: the hiding only fires when
+`sys.frozen` is set, i.e. inside the built executable.
 
 The build script installs anything missing, picks the right `--add-data` separator for the
 platform, and falls back to the running interpreter when the Windows `py` launcher is not

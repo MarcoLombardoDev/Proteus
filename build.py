@@ -61,11 +61,6 @@ def python_launcher() -> list[str]:
 class RebrandingToolBuilder:
     def __init__(self) -> None:
         self.app_name = "Proteus"
-        #: Second, console-attached binary for the command line. On Windows a
-        #: --windowed executable has no console at all: every print() from the
-        #: CLI would vanish and a scheduled job could not be diagnosed. The two
-        #: binaries share the same entry point and differ only in that flag.
-        self.cli_name = "proteus-cli"
         self.main_script = "main.py"
         self.output_dir = "dist"
         self.python = python_launcher()
@@ -125,10 +120,9 @@ class RebrandingToolBuilder:
                     print(f"  ⚠️  Could not remove {temp_dir}: {exc}")
         time.sleep(1)
 
-    def build_executable(self, name: str | None = None, windowed: bool = True) -> str | None:
-        name = name or self.app_name
-        kind = "windowed" if windowed else "console"
-        print(f"🔨 Building the {kind} executable ({name})...")
+    def build_executable(self) -> str | None:
+        name = self.app_name
+        print(f"🔨 Building the executable ({name})...")
 
         hidden_imports = [
             "tkinter", "tkinter.ttk", "tkinter.filedialog",
@@ -159,15 +153,16 @@ class RebrandingToolBuilder:
         cmd = [
             "-m", "PyInstaller",
             "--onefile",
-            "--windowed" if windowed else "--console",
+            # --console, not --windowed: a --windowed binary has no console at
+            # all, so the CLI half of this app would print into nothing. This
+            # is what makes a *single* executable possible — main.py hides the
+            # console window itself when the GUI is what was actually asked
+            # for, trading a brief flash of a console for shipping one file.
+            "--console",
             f"--name={name}",
             "--noconfirm",
+            "--clean",
         ]
-
-        # Only the first pass clears the cache: doing it again would make the
-        # second binary a full rebuild for no benefit.
-        if windowed:
-            cmd.append("--clean")
 
         if os.path.exists("app.ico"):
             cmd.append("--icon=app.ico")
@@ -212,26 +207,23 @@ class RebrandingToolBuilder:
         print(f"✅ {name} built — {exe_path} ({size_mb:.1f} MB)")
         return exe_path
 
-    def create_distribution(self, exe_path: str, cli_path: str | None = None) -> bool:
+    def create_distribution(self, exe_path: str) -> bool:
         print("📦 Preparing the distribution...")
         logs_dir = os.path.join(self.output_dir, "logs")
         os.makedirs(logs_dir, exist_ok=True)
         print(f"  📁 Folder created: {logs_dir}")
 
+        name = os.path.basename(exe_path)
         lines = [
             "Proteus - Rebranding Tool",
             "=========================",
             "",
-            f"Interface:    {os.path.basename(exe_path)}",
-        ]
-        if cli_path:
-            lines += [
-                f"Command line: {os.path.basename(cli_path)}"
-                " --help   (for scripts and scheduled jobs)",
-                "",
-                "The command line never writes anything unless --apply is given.",
-            ]
-        lines += [
+            "One executable, two ways to run it:",
+            "",
+            f"  {name}               -> opens the interface",
+            f"  {name} --help        -> the command line, for scripts and scheduled jobs",
+            "",
+            "The command line never writes anything unless --apply is given.",
             "",
             "Logs are written to the 'logs' folder next to the executable.",
             "If the executable lives in a read-only location, logs go to",
@@ -263,19 +255,12 @@ class RebrandingToolBuilder:
             return False
 
         print()
-        cli_path = self.build_executable(self.cli_name, windowed=False)
-        if not cli_path:
-            print("\n❌ BUILD FAILED: error while building the command line")
-            return False
-
-        print()
-        self.create_distribution(exe_path, cli_path)
+        self.create_distribution(exe_path)
         print()
         print("=" * 55)
         print("   BUILD COMPLETED SUCCESSFULLY!")
         print("=" * 55)
-        print(f"📁 Interface:    {exe_path}")
-        print(f"📁 Command line: {cli_path}")
+        print(f"📁 Executable: {exe_path}")
         print(f"📁 Logs: {os.path.join(self.output_dir, 'logs')}")
         print()
         print("✅ The application is ready for distribution!")

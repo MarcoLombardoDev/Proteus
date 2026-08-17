@@ -321,6 +321,87 @@ def test_main_dispatches_to_the_cli_when_given_arguments(monkeypatch, tree):
     assert main_module.main() == cli.EXIT_OK
 
 
+# ---------------------------------------------------------------------------
+# Hiding the console window when the frozen build's GUI half runs
+# ---------------------------------------------------------------------------
+
+def test_hiding_the_console_is_a_no_op_when_not_frozen(monkeypatch):
+    """
+    Running from source (or any non-PyInstaller launch) must never touch the
+    console: there is usually a real terminal there, and hiding it would hide
+    the very shell the developer is working in.
+    """
+    import main as main_module
+
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(os, "name", "nt")
+    main_module._hide_console_window()   # must not raise, must not touch ctypes
+
+
+def test_hiding_the_console_is_a_no_op_off_windows(monkeypatch):
+    import main as main_module
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(os, "name", "posix")
+    main_module._hide_console_window()   # must not raise
+
+
+def test_hiding_the_console_calls_show_window_when_frozen_on_windows(monkeypatch):
+    """
+    The one path this exists for: a --console PyInstaller build launched with
+    no arguments, i.e. the GUI. GetConsoleWindow/ShowWindow are the documented
+    Win32 calls for this; faked here since they only exist on Windows.
+    """
+    import main as main_module
+
+    calls = {}
+
+    class FakeKernel32:
+        def GetConsoleWindow(self):
+            return 12345
+
+    class FakeUser32:
+        def ShowWindow(self, hwnd, flag):
+            calls["hwnd"], calls["flag"] = hwnd, flag
+
+    class FakeWindll:
+        kernel32 = FakeKernel32()
+        user32 = FakeUser32()
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setitem(sys.modules, "ctypes",
+                        type(sys)("ctypes"))
+    sys.modules["ctypes"].windll = FakeWindll()
+
+    main_module._hide_console_window()
+
+    assert calls == {"hwnd": 12345, "flag": 0}
+
+
+def test_hiding_the_console_never_raises_when_there_is_no_console(monkeypatch):
+    """
+    GetConsoleWindow returns 0 when nothing is attached — e.g. a parent process
+    already redirected the streams. Nothing to hide, and no error either.
+    """
+    import main as main_module
+
+    class FakeKernel32:
+        def GetConsoleWindow(self):
+            return 0
+
+    class FakeWindll:
+        kernel32 = FakeKernel32()
+        user32 = None   # would raise AttributeError if ever touched
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setitem(sys.modules, "ctypes", type(sys)("ctypes"))
+    sys.modules["ctypes"].windll = FakeWindll()
+
+    main_module._hide_console_window()   # must not raise
+
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

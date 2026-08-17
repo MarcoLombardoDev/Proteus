@@ -12,6 +12,35 @@ import traceback
 MIN_PYTHON = (3, 10)
 
 
+def _hide_console_window() -> None:
+    """
+    Hide the console window that comes with launching a console-subsystem
+    executable, when the GUI is what was actually asked for.
+
+    The frozen build is a single .exe rather than one windowed binary plus a
+    separate console one for the CLI: a --windowed executable has no console
+    at all, so the CLI half would print into nothing. A --console executable
+    solves that, but then double-clicking it for the GUI briefly shows a
+    console window before this hides it — a visible trade-off for shipping
+    one file instead of two, not a bug to chase away.
+
+    A no-op anywhere this does not apply: unfrozen (running from source),
+    non-Windows, or no console attached (already hidden, or launched from a
+    parent that redirected the streams).
+    """
+    if os.name != "nt" or not getattr(sys, "frozen", False):
+        return
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            SW_HIDE = 0
+            ctypes.windll.user32.ShowWindow(hwnd, SW_HIDE)
+    except Exception:
+        pass  # cosmetic only: a visible console must never block the GUI
+
+
 def _fatal(title: str, message: str) -> None:
     """
     Show a blocking error, falling back to the console if the GUI is unusable.
@@ -38,6 +67,8 @@ def main() -> int:
     if len(sys.argv) > 1:
         from cli import entry_point
         return entry_point()
+
+    _hide_console_window()
 
     if sys.version_info < MIN_PYTHON:
         _fatal(

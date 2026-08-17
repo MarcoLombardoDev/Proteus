@@ -121,7 +121,7 @@ def test_builder_names_the_executable_after_the_product():
 
 
 # ---------------------------------------------------------------------------
-# The two binaries
+# One executable, serving both the interface and the command line
 # ---------------------------------------------------------------------------
 
 def _pyinstaller_command(monkeypatch, builder, **kwargs) -> list[str]:
@@ -138,27 +138,19 @@ def _pyinstaller_command(monkeypatch, builder, **kwargs) -> list[str]:
     return next(a for a in captured if "PyInstaller" in a)
 
 
-def test_the_gui_binary_is_windowed(monkeypatch, tmp_path):
+def test_the_binary_is_console_attached_not_windowed(monkeypatch, tmp_path):
+    """
+    Regression: a --windowed executable has no console at all, so the CLI half
+    of this app would print into nothing and a scheduled job could not be
+    diagnosed. --console is what lets one executable serve both; main.py hides
+    the console window itself for the GUI case.
+    """
     monkeypatch.chdir(tmp_path)
     builder = build.RebrandingToolBuilder()
     cmd = _pyinstaller_command(monkeypatch, builder)
-    assert "--windowed" in cmd
-    assert f"--name={builder.app_name}" in cmd
-
-
-def test_the_cli_binary_is_console_attached(monkeypatch, tmp_path):
-    """
-    Regression: with only a --windowed executable, Windows gives the CLI no
-    console at all — every line it prints disappears and a scheduled job cannot
-    be diagnosed. The command line therefore needs its own console binary.
-    """
-    monkeypatch.chdir(tmp_path)
-    builder = build.RebrandingToolBuilder()
-    cmd = _pyinstaller_command(monkeypatch, builder,
-                               name=builder.cli_name, windowed=False)
     assert "--console" in cmd
     assert "--windowed" not in cmd
-    assert f"--name={builder.cli_name}" in cmd
+    assert f"--name={builder.app_name}" in cmd
 
 
 def test_cli_module_is_bundled():
@@ -169,13 +161,14 @@ def test_cli_module_is_bundled():
     assert "cli.py" in source
 
 
-def test_distribution_notes_mention_the_command_line(tmp_path, monkeypatch):
+def test_distribution_notes_describe_both_ways_to_run_it(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     builder = build.RebrandingToolBuilder()
-    builder.create_distribution("dist/Proteus.exe", "dist/proteus-cli.exe")
+    builder.create_distribution("dist/Proteus.exe")
 
     notes = (tmp_path / "dist" / "READ_ME_FIRST.txt").read_text(encoding="utf-8")
-    assert "proteus-cli.exe" in notes
+    assert "Proteus.exe" in notes
+    assert "--help" in notes
     assert "--apply" in notes
 
 
