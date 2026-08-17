@@ -269,3 +269,33 @@ def test_a_file_open_elsewhere_is_reported_with_its_remedy(tmp_path):
     assert "open in another program" in outcome.message, outcome.message
     assert "Close the file" in outcome.message
     assert target.read_bytes() == b"old", "the original must survive"
+
+
+def test_a_writable_file_refused_on_windows_points_at_another_program(monkeypatch):
+    """
+    Measured on a Windows CI runner, not assumed.
+
+    A rename over an exclusively-held file is reported as ERROR_ACCESS_DENIED
+    (5), not ERROR_SHARING_VIOLATION (32), so it is indistinguishable from a
+    real permissions problem by error code alone. `os.access(W_OK)` on Windows
+    inspects only the read-only attribute, so "writable, yet refused" means
+    somebody has it open.
+    """
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(os.path, "exists", lambda _p: True)
+    monkeypatch.setattr(os, "access", lambda _p, _mode: True)
+
+    reason, hint = paths.describe_os_error(_error(errno.EACCES), "C:\\share\\offer.docx")
+    assert "probably open in another program" in reason
+    assert "Close the file" in hint
+
+
+def test_a_read_only_file_is_not_blamed_on_another_program(monkeypatch):
+    """The discriminator has to work in both directions to be worth having."""
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(os.path, "exists", lambda _p: True)
+    monkeypatch.setattr(os, "access", lambda _p, _mode: False)
+
+    reason, hint = paths.describe_os_error(_error(errno.EACCES), "C:\\share\\logo.png")
+    assert "Access denied" in reason
+    assert "read-only" in hint
