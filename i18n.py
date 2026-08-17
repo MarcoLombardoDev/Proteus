@@ -511,6 +511,46 @@ _IT: dict[str, str] = {
         "Aprilo con Office per verificare che non sia danneggiato.",
     "Replace this picture by hand in the document.":
         "Sostituisci questa immagine a mano nel documento.",
+
+    # -- Inventory ---------------------------------------------------------
+    "Status": "Stato",
+    "Folder": "Cartella",
+    "Inside document": "Dentro un documento",
+    "Note": "Nota",
+    "found": "trovato",
+    "needs attention": "richiede attenzione",
+
+    # -- Filesystem: Windows and network shares ----------------------------
+    "«{name}» is open in another program, so it cannot be replaced.":
+        "«{name}» è aperto in un altro programma, quindi non può essere "
+        "sostituito.",
+    "Close the file and run the replacement again.":
+        "Chiudi il file e ripeti la sostituzione.",
+    "Access denied to «{name}».": "Accesso negato a «{name}».",
+    "Check the file is not read-only and that you have write permission on the folder. "
+    "On Windows it may also be open in another program.":
+        "Verifica che il file non sia in sola lettura e di avere permessi di "
+        "scrittura sulla cartella. Su Windows potrebbe anche essere aperto in "
+        "un altro programma.",
+    "«{name}» no longer exists.": "«{name}» non esiste più.",
+    "It may have been moved or deleted since the scan.":
+        "Potrebbe essere stato spostato o eliminato dopo la scansione.",
+    "The path is too long for this filesystem ({length} characters).":
+        "Il percorso è troppo lungo per questo filesystem ({length} caratteri).",
+    "Shorten the folder names, or map the share to a drive letter closer to the file.":
+        "Accorcia i nomi delle cartelle, oppure mappa la share su una lettera "
+        "di unità più vicina al file.",
+    "No space left on the destination.":
+        "Spazio esaurito sulla destinazione.",
+    "Free some space and run the replacement again.":
+        "Libera spazio e ripeti la sostituzione.",
+    "Check the file and the folder, then run the scan again.":
+        "Controlla il file e la cartella, poi ripeti la scansione.",
+    "Could not list «{path}», so anything inside it was not examined: {reason}":
+        "Impossibile elencare «{path}», quindi il suo contenuto non è stato "
+        "esaminato: {reason}",
+    "Check your permissions on that folder, then scan it separately.":
+        "Verifica i tuoi permessi su quella cartella, poi scansionala a parte.",
 }
 
 #: Every available catalogue. English needs none: it is the source language.

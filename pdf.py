@@ -31,6 +31,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 
+import paths
 from i18n import t
 from office import ENTRY_SEPARATOR, Problem
 
@@ -134,7 +135,7 @@ def inspect(document: str) -> list[Problem]:
         )]
 
     try:
-        reader = pypdf.PdfReader(document)
+        reader = pypdf.PdfReader(paths.long_path(document))
     except Exception as exc:
         return [Problem(document,
                         t("This PDF could not be read: {error}").format(error=exc),
@@ -180,7 +181,7 @@ def list_images(document: str, *,
     problems: list[Problem] = []
 
     try:
-        reader = pypdf.PdfReader(document)
+        reader = pypdf.PdfReader(paths.long_path(document))
         for number, page in enumerate(reader.pages, 1):
             try:
                 page_images = list(page.images)
@@ -286,7 +287,7 @@ def extract(document: str, entry: str) -> bytes | None:
     if not PYPDF_AVAILABLE:
         return None
     try:
-        reader = pypdf.PdfReader(document)
+        reader = pypdf.PdfReader(paths.long_path(document))
         for number, page in enumerate(reader.pages, 1):
             for index, image in enumerate(page.images, 1):
                 if entry_for(number, index) == entry:
@@ -343,11 +344,12 @@ def write_replacements(document: str, replacements: dict[str, str]) -> None:
     from PIL import Image
 
     folder = os.path.dirname(document) or "."
-    fd, tmp_path = tempfile.mkstemp(prefix=".proteus_", dir=folder, suffix=".pdf")
+    fd, tmp_path = tempfile.mkstemp(prefix=".proteus_",
+                                    dir=paths.long_path(folder), suffix=".pdf")
     os.close(fd)
 
     try:
-        writer = pypdf.PdfWriter(clone_from=document)
+        writer = pypdf.PdfWriter(clone_from=paths.long_path(document))
 
         remaining = dict(replacements)
         for number, page in enumerate(writer.pages, 1):
@@ -372,10 +374,10 @@ def write_replacements(document: str, replacements: dict[str, str]) -> None:
             raise KeyError(t("Image {entry} is no longer in the document.")
                            .format(entry=", ".join(sorted(remaining))))
 
-        with open(tmp_path, "wb") as handle:
+        with open(paths.long_path(tmp_path), "wb") as handle:
             writer.write(handle)
 
-        os.replace(tmp_path, document)
+        os.replace(paths.long_path(tmp_path), paths.long_path(document))
         tmp_path = None
     finally:
         if tmp_path and os.path.exists(tmp_path):

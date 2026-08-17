@@ -28,6 +28,7 @@ from tkinter import filedialog, messagebox, ttk
 import core
 import i18n
 import office
+import paths
 from core import (
     APP_NAME,
     APP_TAGLINE,
@@ -1190,8 +1191,17 @@ class RebrandingToolApp:
         self.log(t("Source logo folder: {folder}").format(folder=source))
 
         def walk_error(path: str, exc: Exception):
+            """
+            A folder the scan could not enter is a finding, not a log line.
+
+            It may be full of logos, and "we scanned everything" is false while
+            one branch of the tree was refused.
+            """
             self.log(t("  Access denied or error on {path}: {error}").format(
                 path=path, error=exc), logging.WARNING)
+            if isinstance(exc, OSError):
+                reason, hint = paths.describe_unreadable_folder(exc, path)
+                self._problems.append(core.Problem(path, reason, hint))
 
         source_paths = core.collect_source_files(
             source, cancel_event=self._cancel_event, on_error=walk_error)

@@ -38,6 +38,7 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
 | `rebranding_tool.py` | Presentation only. |
 | `office.py` | Standard library only — no Office-format dependency ships at runtime. Also the home of `Problem`, since `pdf.py` depends on this module. |
 | `pdf.py` | `pypdf` only, and only through its own `ImageFile.replace()`. Hand-rolled byte surgery works on simple PDFs and breaks on object streams. |
+| `paths.py` | Windows long paths and readable filesystem errors. Lowest module after `i18n`, so anything may import it. |
 | `cli.py` | Everything the interface does, without a display. |
 
 ## Things that will bite you
@@ -54,6 +55,12 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
   session-scoped for this reason.
 - **Writes must stay atomic**: temporary file in the same folder, then
   `os.replace`. Backups never clobber an existing `.bak`.
+- **Every read and write of a target goes through `paths.long_path`.** Windows
+  fails past 260 characters without the `\\?\` prefix, and a departmental
+  share reaches that easily. UNC paths need a different prefix from drive
+  paths; getting it wrong fails silently.
+- **A folder the scan could not enter is a finding, not a log line.** It may be
+  full of logos, so "we scanned everything" would be a lie.
 - **A PDF image is identified by position (`p2i1`), never by object number.**
   `PdfWriter(clone_from=…)` renumbers objects, so a number captured while
   scanning cannot find the picture again while writing. The stream size is
@@ -82,6 +89,10 @@ Windows, against Python 3.10 and 3.12, then builds the Windows executables.
   assets; sample data and screenshots use neutral synthetic artwork only.
 - **Keep the i18n catalogues in step.** English strings are the keys. Three
   tests check for missing entries, stale entries and dropped `{placeholders}`.
+- **`--audit` must never be able to write.** It exists so a project can be
+  sized before the new logo is designed, and it is the one mode people will run
+  against production during office hours. Combining it with `--apply` is an
+  argument error, deliberately.
 - **Regenerate screenshots after a UI change:**
   `xvfb-run -a python docs/generate_screenshots.py`. The terminal capture runs
   the real CLI and draws its actual output, so it cannot go stale silently.

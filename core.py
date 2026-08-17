@@ -32,6 +32,7 @@ from typing import Callable, Iterable, Sequence
 
 import i18n
 import office
+import paths
 import pdf as pdf_module
 from i18n import t
 
@@ -1291,16 +1292,26 @@ def replace_file(
     try:
         if backup:
             backup_path = make_backup_path(target)
-            shutil.copy2(target, backup_path)
+            shutil.copy2(paths.long_path(target), paths.long_path(backup_path))
 
-        fd, tmp_path = tempfile.mkstemp(prefix=".proteus_", dir=folder)
+        # The extended-length form is what lets any of this work past 260
+        # characters on Windows, which a departmental share reaches easily.
+        fd, tmp_path = tempfile.mkstemp(prefix=".proteus_",
+                                        dir=paths.long_path(folder))
         os.close(fd)
-        shutil.copy2(source, tmp_path)
-        os.replace(tmp_path, target)   # atomic on the same filesystem
+        shutil.copy2(paths.long_path(source), paths.long_path(tmp_path))
+        os.replace(paths.long_path(tmp_path),
+                   paths.long_path(target))   # atomic on the same filesystem
         tmp_path = None
 
         return ReplaceOutcome(target, source, "ok", "", backup_path)
 
+    except OSError as exc:
+        # "PermissionError" on a file server usually means the document is open
+        # in Word, which is not a rights problem. Say which it is.
+        reason, hint = paths.describe_os_error(exc, target)
+        return ReplaceOutcome(target, source, "error",
+                              f"{reason} {hint}".strip(), backup_path)
     except Exception as exc:
         return ReplaceOutcome(target, source, "error", str(exc), backup_path)
 
@@ -1568,6 +1579,83 @@ def restore_backups(
 # ---------------------------------------------------------------------------
 # CSV export
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Inventory
+# ---------------------------------------------------------------------------
+
+def audit_breakdown(targets: Sequence[FileInfo]) -> dict:
+    """
+    Summarise what a scan found, the way a project needs it summarised.
+
+    A rebranding starts with a question nobody can answer — *how many, and
+    where?* — and the answer has to be legible to whoever is approving the work,
+    not only to whoever runs the tool. So the totals are grouped by folder,
+    which maps onto departments and sites, and by format, which maps onto who
+    has to redraw what.
+
+    Embedded pictures are attributed to the folder of their containing document:
+    a logo inside `Sales/offer.docx` is a Sales problem, not an "inside a
+    document" problem.
+    """
+    by_folder: dict[str, int] = {}
+    by_format: dict[str, int] = {}
+    total_bytes = 0
+    embedded = 0
+
+    for info in targets:
+        folder = os.path.dirname(info.location) or "."
+        by_folder[folder] = by_folder.get(folder, 0) + 1
+        by_format[info.fmt] = by_format.get(info.fmt, 0) + 1
+        total_bytes += info.size
+        if info.embedded:
+            embedded += 1
+
+    return {
+        "files": len(targets),
+        "embedded": embedded,
+        "bytes": total_bytes,
+        "by_folder": dict(sorted(by_folder.items(),
+                                 key=lambda kv: (-kv[1], kv[0]))),
+        "by_format": dict(sorted(by_format.items(),
+                                 key=lambda kv: (-kv[1], kv[0]))),
+    }
+
+
+def export_audit_csv(targets: Sequence[FileInfo],
+                     problems: Sequence[Problem],
+                     destination: str) -> str:
+    """
+    Write the inventory: one row per finding, whether or not it is replaceable.
+
+    Both kinds go in one file, told apart by the Status column. Two files would
+    let somebody circulate the encouraging half on its own — and the point of an
+    inventory is to size the *whole* job, including the part no tool will do.
+    """
+    with open(destination, "w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.writer(handle, delimiter=";")
+        writer.writerow([
+            t("Status"), t("Folder"), t("File"), t("Format"), t("Size"),
+            t("Resolution"), t("Similarity"), t("Inside document"), t("Note"),
+        ])
+        for info in targets:
+            writer.writerow([
+                t("found"),
+                os.path.dirname(info.location) or ".",
+                info.name, info.fmt, info.size_str, info.dim_str,
+                info.similarity_str,
+                t("YES") if info.embedded else t("NO"),
+                "",
+            ])
+        for problem in problems:
+            writer.writerow([
+                t("needs attention"),
+                os.path.dirname(problem.path.split(office.ENTRY_SEPARATOR)[0]) or ".",
+                problem.name, "", "", "", "", "",
+                f"{problem.reason} {problem.hint}".strip(),
+            ])
+    return destination
+
 
 def export_matches_csv(matches: Sequence[Match], destination: str) -> str:
     """Export the matches to CSV (`;` separator, Excel-friendly in Europe)."""
