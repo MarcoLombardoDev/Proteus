@@ -894,7 +894,7 @@ def test_office_documents_flow_through_the_whole_wizard(app, tmp_path, monkeypat
     _run_workers(app)
 
     import office
-    entry = office.list_images(doc_path)[0].entry
+    entry = office.list_images(doc_path)[0][0].entry
     temp = office.extract_to_temp(doc_path, entry)
     try:
         assert Image.open(temp).convert("RGB").getpixel((60, 40)) == (20, 90, 170)

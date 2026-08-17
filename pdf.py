@@ -32,7 +32,7 @@ import tempfile
 from dataclasses import dataclass
 
 from i18n import t
-from office import ENTRY_SEPARATOR
+from office import ENTRY_SEPARATOR, Problem
 
 try:
     import pypdf
@@ -83,25 +83,6 @@ class EmbeddedImage:
     def key(self) -> str:
         """Unique identifier usable where a file path would normally go."""
         return f"{self.document}{ENTRY_SEPARATOR}{self.entry}"
-
-
-@dataclass(frozen=True)
-class Problem:
-    """
-    Something Proteus found but cannot deal with on its own.
-
-    The whole point of this type is that it reaches the user. A rebranding that
-    quietly leaves three logos in place is worse than one that stops and names
-    them, because nobody goes looking for a failure they were never told about.
-    """
-
-    path: str            # file, or `document!/entry` when it is one picture
-    reason: str          # what is wrong, already translated
-    hint: str = ""       # what the user can do by hand
-
-    @property
-    def name(self) -> str:
-        return os.path.basename(self.path.split(ENTRY_SEPARATOR)[0])
 
 
 def is_pdf(path: str) -> bool:

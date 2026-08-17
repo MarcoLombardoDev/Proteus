@@ -494,6 +494,23 @@ _IT: dict[str, str] = {
         "automaticamente: richiedono un intervento manuale.",
     "Show details": "Mostra dettagli",
     "Needs manual attention": "Richiede intervento manuale",
+
+    # -- Office: findings the user has to act on by hand -------------------
+    "Contains {count} pasted image(s) ({names}) that cannot be replaced automatically.":
+        "Contiene {count} immagini incollate ({names}) che non possono essere "
+        "sostituite automaticamente.",
+    "Open the document, delete the pasted logo and insert the new one with Insert > Pictures.":
+        "Apri il documento, elimina il logo incollato e inserisci quello nuovo "
+        "con Inserisci > Immagini.",
+    "This document is password-protected, so its images cannot be read.":
+        "Questo documento è protetto da password, quindi le sue immagini non "
+        "sono leggibili.",
+    "This document could not be opened: {error}":
+        "Impossibile aprire questo documento: {error}",
+    "Open it in Office to check it is not damaged.":
+        "Aprilo con Office per verificare che non sia danneggiato.",
+    "Replace this picture by hand in the document.":
+        "Sostituisci questa immagine a mano nel documento.",
 }
 
 #: Every available catalogue. English needs none: it is the source language.

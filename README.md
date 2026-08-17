@@ -8,12 +8,15 @@
 > **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
 > what your files look like without changing where they are.
 
-Proteus is a Python desktop application for the **bulk replacement of logo and
-graphic files** across a large folder tree — a company file server, a website checkout, a
-network share. You point it at a folder of new logos and a folder to scan; it finds the
-files that match a pattern, pairs each one with the most suitable replacement, shows you
-a before/after preview of every pairing, and then overwrites them **atomically, with
-recoverable backups**.
+Proteus is a Python desktop application built for one job: **carrying a corporate
+rebranding through an organisation's files.** A merger, a name change, a brand refresh —
+whatever the trigger, the old logo is suddenly wrong in thousands of places at once, and
+somebody has to find and replace every copy of it.
+
+You point it at a folder of new logos and a folder to scan; it finds the files carrying the
+old logo — by name, by visual similarity, and inside Office documents and PDFs — pairs each
+one with the most suitable replacement, shows you a before/after preview of every pairing,
+and then overwrites them **atomically, with recoverable backups**.
 
 It exists because doing this by hand across hundreds of files is slow and, worse, silently
 error-prone: it is very easy to drop a 1920×600 banner where a 32×32 favicon belonged.
@@ -70,27 +73,28 @@ UI change with `xvfb-run -a python docs/generate_screenshots.py`.</sub>
 ## Table of Contents
 
 1. [Why this tool](#why-this-tool)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Usage](#usage)
-5. [Search patterns](#search-patterns)
-6. [Content search](#content-search)
-7. [Office documents](#office-documents)
-8. [PDF files](#pdf-files)
-9. [Nothing is skipped in silence](#nothing-is-skipped-in-silence)
-10. [Command line and unattended runs](#command-line-and-unattended-runs)
-11. [Matching algorithm](#matching-algorithm)
-12. [Safety model](#safety-model)
-13. [Backup and restore](#backup-and-restore)
-14. [CSV reports](#csv-reports)
-15. [Languages](#languages)
-16. [Files and folders](#files-and-folders)
-17. [Building a standalone executable](#building-a-standalone-executable)
-18. [Development](#development)
-19. [Requirements](#requirements)
-20. [Scope and limitations](#scope-and-limitations)
-21. [License & Commercial Licensing](#license--commercial-licensing)
-22. [Disclaimer](#disclaimer)
+2. [The use case: a corporate rebranding](#the-use-case-a-corporate-rebranding)
+3. [Features](#features)
+4. [Installation](#installation)
+5. [Usage](#usage)
+6. [Search patterns](#search-patterns)
+7. [Content search](#content-search)
+8. [Office documents](#office-documents)
+9. [PDF files](#pdf-files)
+10. [Nothing is skipped in silence](#nothing-is-skipped-in-silence)
+11. [Command line and unattended runs](#command-line-and-unattended-runs)
+12. [Matching algorithm](#matching-algorithm)
+13. [Safety model](#safety-model)
+14. [Backup and restore](#backup-and-restore)
+15. [CSV reports](#csv-reports)
+16. [Languages](#languages)
+17. [Files and folders](#files-and-folders)
+18. [Building a standalone executable](#building-a-standalone-executable)
+19. [Development](#development)
+20. [Requirements](#requirements)
+21. [Scope and limitations](#scope-and-limitations)
+22. [License & Commercial Licensing](#license--commercial-licensing)
+23. [Disclaimer](#disclaimer)
 
 ---
 
@@ -112,6 +116,87 @@ branch-office shares — the [command line](#command-line-and-unattended-runs) r
 supervision with explicit rules rather than dropping it: still a dry run by default, and it
 refuses to write when a match is not certain.
 
+---
+
+## The use case: a corporate rebranding
+
+This is what Proteus was built for, and what its defaults assume.
+
+A company changes its brand — a merger, an acquisition, a new name, a visual refresh. The
+day the new identity goes live, the old logo is wrong in every place it was ever put, and
+nobody has a list of those places. Typically:
+
+| Where | What is there |
+|---|---|
+| **File server / shared drives** | Years of logos in a dozen sizes, under names nobody agreed on |
+| **Website and intranet** | `logo.png`, `logo@2x.png`, favicons, e-mail headers |
+| **Templates** | Letterhead, invoices, offer templates, slide masters |
+| **Documents already produced** | Reports, presentations and spreadsheets with the logo embedded — where most copies actually are |
+| **Print and PDF** | Brochures, datasheets, signed contracts |
+| **Departmental and branch shares** | The same problem again, repeated per site |
+
+Three things make this genuinely hard, and each maps to a feature:
+
+1. **You cannot find them by name.** `header_bg.png`, `PROGETTO2014.png`, `img_04.jpg` are
+   all the logo. → [Content search](#content-search) finds it by what it *looks like*.
+2. **Most copies are not loose files.** They are inside `.docx`, `.pptx`, `.xlsx` and PDFs.
+   → [Office documents](#office-documents) and [PDF files](#pdf-files).
+3. **Some copies cannot be replaced at all** — a pasted logo, a signed PDF, vector artwork.
+   → [Nothing is skipped in silence](#nothing-is-skipped-in-silence): they are listed with
+   a remedy so somebody can finish them by hand.
+
+### A campaign, start to finish
+
+The order below is the one the tool is designed around, and each step is safe to stop at.
+
+**1 — Take an inventory before touching anything.** Run a dry run by content, with a copy
+of the old logo as the reference, and export the CSV. That list *is* the scope of the
+project: how many files, in which departments, in what formats.
+
+```bash
+python main.py --scan //fs01/shared --source ./brand-2026                --reference ./brand-old/logo.png --office --pdf                --report inventory.csv
+```
+
+Nothing is written — `--apply` is absent — so this is safe to run on production shares
+during office hours.
+
+**2 — Read the findings, not just the matches.** The run also lists what it *cannot* do:
+pasted logos, protected documents, vector PDFs. That list is the manual work item, and it is
+better to size it now than to discover it after go-live.
+
+**3 — Rehearse one folder in the interface.** Pick the messiest share and walk tabs ① to ④
+with **Dry run** ticked. The before/after preview on every pairing is the point: this is
+where you catch a 1920×600 banner about to land where a 32×32 favicon belonged.
+
+**4 — Run it for real, with backups on.** Interface for supervised folders, command line for
+the rest. Keep `--report` on every run: those CSVs are the audit trail when someone asks
+what changed.
+
+**5 — Verify.** Re-run step 1. What comes back is what is left.
+
+> ⚠️ **One caveat on verification, stated plainly.** The visual match is deliberately
+> blind to colour, so a *recoloured* new logo still matches the old reference at close to
+> 100%. That is right for finding a logo, and wrong for proving one was replaced: a second
+> scan cannot distinguish "still the old logo" from "the new logo, same shape". Use the
+> replacement report — not a second content scan — as the record of what changed. If the
+> new identity has a genuinely different silhouette, verification works normally.
+
+**6 — Undo, if it comes to that.** **Restore backups** reverts to the state before the
+first campaign, per folder. Always keep an independent backup as well: see the
+[Disclaimer](#disclaimer).
+
+### What it does not do
+
+Worth knowing before it is presented to anyone as a complete solution:
+
+- **It replaces images, not text.** The old *company name* in document bodies, headers,
+  footers, alt text, document properties and file names is untouched. That is a real part of
+  a rebranding and Proteus does not do it.
+- **It does not rename files.** `logo_oldco.png` keeps its name; renaming would break every
+  reference to it.
+- **It does not touch the inside of an SVG.** SVG files are replaced whole, but brand colours
+  or text inside the markup are not edited.
+- Vector logos in PDFs cannot be replaced; see [PDF files](#pdf-files).
 
 ---
 
@@ -378,7 +463,13 @@ certainly sized to it when the image was first inserted.
   packages.
 - **EMF/WMF metafiles**, which Office produces when a logo is *pasted* rather than
   inserted. They cannot be rasterised by Pillow, so they could be neither previewed nor
-  compared — only swapped blindly, which is worse than not touching them.
+  compared — only swapped blindly, which is worse than not touching them. **They are
+  reported**, with the remedy: delete the pasted picture and re-insert it with
+  *Insert > Pictures*. Pasting is how most logos get into a corporate document, so this is
+  the finding you are most likely to see.
+- **Password-protected or damaged packages** are reported too, and the two are
+  distinguished: a protected `.docx` is an OLE compound file rather than a ZIP, so calling
+  it "damaged" would send you looking for the wrong problem.
 - Logos drawn with native Office shapes, or composited into a larger picture.
 
 ---
@@ -805,7 +896,7 @@ The suite is spread across nine files:
 | `tests/test_i18n.py` | Translation layer, catalogue completeness and placeholder integrity |
 | `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
 | `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
-| `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups and aspect-ratio guarding |
+| `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups, aspect-ratio guarding, and the pasted/protected cases that must be reported |
 | `tests/test_pdf.py` | Real PDFs built and re-opened with pypdf: finding, replacing, the staleness guard, and every case that must be reported instead |
 | `tests/test_cli.py` | Every exit code, the safety refusals and their overrides, reports, restore, output control and entry-point dispatch |
 | `tests/test_docs.py` | Screenshots referenced and shown, the price list agreeing with itself, and the AGPL text left verbatim |

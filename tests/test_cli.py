@@ -227,7 +227,7 @@ def test_office_documents_are_searched_when_asked(tmp_path, tree):
     assert run("--scan", tree["scan"], "--source", tree["source"],
                "--reference", tree["reference"], "--office", "--apply") == cli.EXIT_OK
 
-    entry = office.list_images(path)[0].entry
+    entry = office.list_images(path)[0][0].entry
     temp = office.extract_to_temp(path, entry)
     try:
         assert Image.open(temp).convert("RGB").getpixel((60, 40)) == (20, 90, 170)
