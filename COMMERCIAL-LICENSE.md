@@ -11,6 +11,9 @@ Both licences cover **the same software**. There is no crippled edition, no feat
 back behind a paywall, no licence key and no phone-home. What you buy is **permission**,
 not functionality.
 
+That includes every capability: bulk replacement, visual content search, images inside
+Office documents and inside PDFs. Nothing is reserved for a paid tier, now or later.
+
 > **To buy, or to ask anything commercial — including whether you need this at all —
 > email [marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20commercial%20licence%20enquiry).**
 > Email is the only commercial channel: quotes, contracts, invoicing and pre-sales
@@ -214,15 +217,24 @@ a commercial licence cannot and does not relicense them.
 |---|---|---|
 | Python, `tkinter` | PSF License | ✅ Permissive |
 | Pillow | MIT-CMU (HPND) | ✅ Permissive |
+| `pypdf` | BSD-3-Clause | ✅ Permissive — used for PDF support |
 | ttkbootstrap | MIT | ✅ Permissive, optional |
 | PyInstaller | GPL-2.0 **with bootloader exception** | ✅ The exception exists to allow proprietary frozen applications |
 
 **Every dependency is permissively licensed and safe to redistribute in a commercial
 product.** No dependency imposes copyleft, field-of-use or anti-commercial conditions.
 
-Proteus reads and writes Office packages using the Python standard library alone; no
-Office-format library is bundled or required at runtime. `python-docx`, `python-pptx` and
-`openpyxl` are test-only dependencies and are not shipped.
+Two deliberate choices behind that sentence, since they are the kind that get made
+carelessly:
+
+- **PDF support uses `pypdf` (BSD-3-Clause), not PyMuPDF.** PyMuPDF is offered under
+  AGPL-3.0 or a paid Artifex licence. A commercial licence to Proteus cannot relicense
+  somebody else's copyleft code, so a buyer would have needed a second licence from a
+  third party to ship the product — which would make the sentence above false. `pypdf` is
+  slower for some workloads and it was chosen anyway.
+- **Office packages need no library at all.** Proteus reads and writes them with the
+  Python standard library; `python-docx`, `python-pptx` and `openpyxl` are test-only and
+  are not shipped.
 
 Verify these against the versions you actually ship. They are listed in good faith, current
 as at the version of this document, and are not a legal opinion.

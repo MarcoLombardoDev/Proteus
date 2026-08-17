@@ -32,6 +32,7 @@ from typing import Callable, Iterable, Sequence
 
 import i18n
 import office
+import pdf as pdf_module
 from i18n import t
 
 try:
@@ -97,6 +98,18 @@ EQUIVALENT_EXTENSIONS: dict[str, str] = {
 #: Extensions whose dimensions Pillow cannot read. SVG is handled separately
 #: by parsing the XML markup (see `svg_dimensions`).
 NO_PIL_PREVIEW = frozenset({".svg", ".eps", ".pdf"})
+
+#: Formats Pillow can rasterise, hence the only ones usable to replace a picture
+#: stored inside a PDF, where the replacement is re-encoded from pixels.
+RASTER_FORMATS = SUPPORTED_FORMATS - NO_PIL_PREVIEW
+
+#: A finding the user has to act on by hand.
+#:
+#: Defined in `pdf.py` because that is where most of them arise, and re-exported
+#: here so callers have one place to import from. The rule it serves is absolute:
+#: anything Proteus notices but cannot deal with is reported, never dropped. A
+#: logo left in place without a word is worse than one openly refused.
+Problem = pdf_module.Problem
 
 #: Suffix used for backups of the original files.
 BACKUP_SUFFIX = ".bak"
@@ -486,10 +499,16 @@ class FileInfo:
     #: notion does not apply.
     similarity: float | None = None
 
-    #: For a picture stored inside an Office package: the document on disk and
-    #: the entry within it. Both None for an ordinary file.
+    #: For a picture stored inside a document (Office package or PDF): the
+    #: document on disk and the entry within it. Both None for an ordinary file.
     container: str | None = None
     entry: str | None = None
+
+    #: True when writing this target re-encodes the replacement from pixels,
+    #: which is what happens inside a PDF. It makes the same-format rule
+    #: meaningless for this row: the stored encoding is an implementation
+    #: detail, not a contract, so a PNG may replace a JPEG-encoded picture.
+    reencoded: bool = False
 
     @property
     def fmt(self) -> str:
@@ -558,6 +577,33 @@ class FileInfo:
             similarity=similarity,
             container=image.document,
             entry=image.entry,
+        )
+
+    @classmethod
+    def from_pdf_image(cls, image: "pdf_module.EmbeddedImage",
+                       similarity: float | None = None) -> "FileInfo":
+        """Describe a raster image stored inside a PDF."""
+        dim = None
+        temp = pdf_module.extract_to_temp(image.document, image.entry)
+        if temp:
+            try:
+                dim = get_image_dimensions(temp)
+            finally:
+                try:
+                    os.remove(temp)
+                except OSError:
+                    pass
+
+        return cls(
+            path=image.key,
+            name=image.name,
+            ext=image.ext,
+            size=image.size,
+            dim=dim,
+            similarity=similarity,
+            container=image.document,
+            entry=image.entry,
+            reencoded=True,
         )
 
     @classmethod
@@ -929,6 +975,92 @@ def scan_office_documents(
     return found
 
 
+def scan_pdf_documents(
+    folder: str,
+    *,
+    patterns: Sequence[str] = (),
+    references: Sequence[str] = (),
+    threshold: float = DEFAULT_SIMILARITY,
+    exclude_dirs: Iterable[str] = (),
+    progress: Callable[[int, int], None] | None = None,
+    cancel_event: threading.Event | None = None,
+    on_error: Callable[[str, Exception], None] | None = None,
+    on_problem: Callable[[Problem], None] | None = None,
+) -> list[FileInfo]:
+    """
+    Find replaceable raster images inside the PDFs under `folder`.
+
+    Every PDF the scan cannot fully handle is passed to `on_problem` instead of
+    being dropped: encrypted, signed, damaged, an unsupported image encoding, or
+    a file that matched the pattern and turned out to contain nothing but vector
+    artwork. That last one only fires when `patterns` selected the file by name
+    — the user pointing at it is what makes "nothing replaceable in here" worth
+    saying, rather than noise repeated for every unrelated PDF in the tree.
+    """
+    refs = reference_hashes(references) if references else []
+    excluded = [os.path.realpath(d) for d in exclude_dirs if d]
+
+    def _walk_error(exc: OSError) -> None:
+        if on_error:
+            on_error(getattr(exc, "filename", folder) or folder, exc)
+
+    def _report(problem: Problem) -> None:
+        if on_problem:
+            on_problem(problem)
+
+    documents: list[str] = []
+    for root, dirs, files in os.walk(folder, onerror=_walk_error, followlinks=False):
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelled()
+        real_root = os.path.realpath(root)
+        dirs[:] = [d for d in dirs
+                   if not any(is_within(os.path.join(real_root, d), ex)
+                              for ex in excluded)]
+        for fname in files:
+            if pdf_module.is_pdf(fname) and not fname.lower().endswith(BACKUP_SUFFIX):
+                documents.append(os.path.join(root, fname))
+
+    found: list[FileInfo] = []
+    total = len(documents)
+
+    for index, document in enumerate(sorted(documents), 1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise OperationCancelled()
+
+        named = bool(patterns) and matches_patterns(os.path.basename(document), patterns)
+        images, problems = pdf_module.list_images(document, report_empty=named)
+        for problem in problems:
+            _report(problem)
+
+        for image in images:
+            similarity = None
+            if refs:
+                temp = pdf_module.extract_to_temp(document, image.entry)
+                if temp is None:
+                    _report(Problem(
+                        image.key,
+                        t("Image {name} could not be extracted for comparison.")
+                        .format(name=image.name),
+                        t("Replace this picture by hand in a PDF editor."),
+                    ))
+                    continue
+                try:
+                    similarity = best_similarity(temp, refs)
+                finally:
+                    try:
+                        os.remove(temp)
+                    except OSError:
+                        pass
+                if similarity < threshold:
+                    continue
+            found.append(FileInfo.from_pdf_image(image, similarity=similarity))
+
+        if progress:
+            progress(index, total)
+
+    return found
+
+
 def collect_source_files(
     folder: str,
     *,
@@ -1039,8 +1171,15 @@ def find_best_match(
 
     Returns `(source, score)`; `(None, inf)` when there is no candidate.
     """
-    target_ext = normalized_ext(target.ext)
-    candidates = [s for s in sources if normalized_ext(s.ext) == target_ext]
+    if target.reencoded:
+        # Inside a PDF the picture is re-encoded from pixels when written, so
+        # any raster source will do. Insisting on the stored encoding would
+        # reject a perfectly good PNG for a JPEG-compressed logo — which is the
+        # normal case, since new brand assets arrive as PNG.
+        candidates = [s for s in sources if normalized_ext(s.ext) in RASTER_FORMATS]
+    else:
+        target_ext = normalized_ext(target.ext)
+        candidates = [s for s in sources if normalized_ext(s.ext) == target_ext]
     if not candidates:
         return None, float("inf")
 
@@ -1206,6 +1345,48 @@ def replace_in_document(
                               "error", str(exc), backup_path)
 
 
+def replace_in_pdf(
+    document: str,
+    replacements: dict[str, tuple[str, int | None]],
+    *,
+    backup: bool = True,
+    dry_run: bool = False,
+) -> ReplaceOutcome:
+    """
+    Replace one or more raster images inside a single PDF.
+
+    Grouped per document for the same reason as Office packages: one rewrite,
+    one backup, whatever the number of pictures. `replacements` maps an entry to
+    a `(source path, expected stream size)` pair, the size being what the scan
+    measured — `pdf.write_replacements` refuses if it no longer matches.
+    """
+    if not os.path.isfile(document):
+        return ReplaceOutcome(document, "", "error",
+                              t("File to replace not found, or not a file."))
+
+    sources = ", ".join(sorted({src for src, _ in replacements.values()}))
+
+    for source, _ in replacements.values():
+        if not os.path.isfile(source):
+            return ReplaceOutcome(document, source, "error",
+                                  t("Source file not found, or not a file."))
+
+    if dry_run:
+        return ReplaceOutcome(document, sources, "ok",
+                              t("Dry run: nothing written to disk."),
+                              make_backup_path(document) if backup else None)
+
+    backup_path: str | None = None
+    try:
+        if backup:
+            backup_path = make_backup_path(document)
+            shutil.copy2(document, backup_path)
+        pdf_module.write_replacements(document, replacements)
+        return ReplaceOutcome(document, sources, "ok", "", backup_path)
+    except Exception as exc:
+        return ReplaceOutcome(document, sources, "error", str(exc), backup_path)
+
+
 def replace_all(
     matches: Sequence[Match],
     *,
@@ -1225,14 +1406,19 @@ def replace_all(
 
     loose: list[Match] = []
     grouped: dict[str, dict[str, str]] = {}
+    pdfs: dict[str, dict[str, tuple[str, int | None]]] = {}
     for match in matches:
         if match.target.embedded and match.source is not None:
-            grouped.setdefault(match.target.container, {})[
-                match.target.entry] = match.source.path
+            if pdf_module.is_pdf(match.target.container):
+                pdfs.setdefault(match.target.container, {})[match.target.entry] = (
+                    match.source.path, match.target.size)
+            else:
+                grouped.setdefault(match.target.container, {})[
+                    match.target.entry] = match.source.path
         else:
             loose.append(match)
 
-    total = len(loose) + len(grouped)
+    total = len(loose) + len(grouped) + len(pdfs)
     index = 0
 
     for match in loose:
@@ -1256,6 +1442,17 @@ def replace_all(
         index += 1
         outcome = replace_in_document(document, replacements,
                                       backup=backup, dry_run=dry_run)
+        report.outcomes.append(outcome)
+        if progress:
+            progress(index, total, outcome)
+
+    for document, replacements in sorted(pdfs.items()):
+        if cancel_event is not None and cancel_event.is_set():
+            report.cancelled = True
+            return report
+        index += 1
+        outcome = replace_in_pdf(document, replacements,
+                                 backup=backup, dry_run=dry_run)
         report.outcomes.append(outcome)
         if progress:
             progress(index, total, outcome)
@@ -1411,6 +1608,7 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "references": [],
     "similarity": int(DEFAULT_SIMILARITY * 100),
     "include_office": False,
+    "include_pdf": False,
     "backup": True,
     "dry_run": False,
 }

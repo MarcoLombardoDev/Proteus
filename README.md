@@ -35,23 +35,29 @@ error-prone: it is very easy to drop a 1920×600 banner where a 32×32 favicon b
 | **③ Matches** — proposed pairings, quality grade, before/after preview | **④ Replacement** — summary, backup and dry-run options, live log |
 | ![Matches tab](docs/screenshots/03_matches.png) | ![Replacement tab](docs/screenshots/04_replacement.png) |
 
-Row 7 in tabs ② and ③ is worth a look: `annual_report.docx!/image1.png` is a picture
-**embedded in a Word document**, found and paired like any loose file. No wildcard would
-have reached it.
+Two rows in tabs ② and ③ are worth a look. `annual_report.docx!/image1.png` is a picture
+**embedded in a Word document**, and `brochure.pdf!/p1i1` is one **inside a PDF** — both
+found and paired like any loose file. No wildcard would have reached either.
 
 **① in content-search mode** — no pattern at all, just a copy of the old logo:
 
 ![Content search configuration](docs/screenshots/05_content_search.png)
 
-**The command line**, on the same sample data — a dry run, a refusal, and the applied
-campaign:
+**The command line**, on the same sample data — a dry run, a refusal, and a PDF campaign:
 
 ![Command line session](docs/screenshots/06_command_line.png)
 
-The middle run is the one to read. It found the logo inside the document, but two of the
-hits were below 95% similarity, so it **refused to write anything and exited 4** — naming
-both files and how to proceed deliberately. That is what "unattended" has to look like
-when nobody is watching the screen.
+The last two runs are the ones to read.
+
+The **middle** one found the logo inside the Word document, but two hits were below 95%
+similarity, so it **refused to write anything and exited 4** — naming both files and how
+to proceed deliberately.
+
+The **last** one replaced the logo inside `brochure.pdf`, then reported that
+`flyer_vector.pdf` draws its logo as vector artwork and cannot be touched, with what to do
+about it — and **exited 5** rather than 0. It did work, and it also left work behind; a
+scheduler that saw `0` would never have told anyone. That is
+[the rule](#nothing-is-skipped-in-silence) this tool is built around.
 
 <sub>Generated with [`docs/generate_screenshots.py`](docs/generate_screenshots.py), which boots
 the real app under Xvfb against sample data in a temporary folder (no network, and your own
@@ -70,19 +76,21 @@ UI change with `xvfb-run -a python docs/generate_screenshots.py`.</sub>
 5. [Search patterns](#search-patterns)
 6. [Content search](#content-search)
 7. [Office documents](#office-documents)
-8. [Command line and unattended runs](#command-line-and-unattended-runs)
-9. [Matching algorithm](#matching-algorithm)
-10. [Safety model](#safety-model)
-11. [Backup and restore](#backup-and-restore)
-12. [CSV reports](#csv-reports)
-13. [Languages](#languages)
-14. [Files and folders](#files-and-folders)
-15. [Building a standalone executable](#building-a-standalone-executable)
-16. [Development](#development)
-17. [Requirements](#requirements)
-18. [Scope and limitations](#scope-and-limitations)
-19. [License & Commercial Licensing](#license--commercial-licensing)
-20. [Disclaimer](#disclaimer)
+8. [PDF files](#pdf-files)
+9. [Nothing is skipped in silence](#nothing-is-skipped-in-silence)
+10. [Command line and unattended runs](#command-line-and-unattended-runs)
+11. [Matching algorithm](#matching-algorithm)
+12. [Safety model](#safety-model)
+13. [Backup and restore](#backup-and-restore)
+14. [CSV reports](#csv-reports)
+15. [Languages](#languages)
+16. [Files and folders](#files-and-folders)
+17. [Building a standalone executable](#building-a-standalone-executable)
+18. [Development](#development)
+19. [Requirements](#requirements)
+20. [Scope and limitations](#scope-and-limitations)
+21. [License & Commercial Licensing](#license--commercial-licensing)
+22. [Disclaimer](#disclaimer)
 
 ---
 
@@ -114,6 +122,8 @@ refuses to write when a match is not certain.
   called — the half of a rebranding that wildcards cannot solve
 - **Inside Office documents**: pictures embedded in `.docx`, `.pptx` and `.xlsx` are found
   and replaced like any other file — which is where most logos actually live
+- **Inside PDF files**: raster images in a PDF are found, compared and replaced too. A
+  logo drawn as vector artwork cannot be swapped — and is **reported**, not ignored
 - Recursive search with wildcard patterns; multiple patterns at once (`logo*.png; logo*.svg`)
 - Case-insensitive matching, symlink/junction cycle protection, per-folder error reporting
   so an unreadable network share does not abort the whole scan
@@ -137,6 +147,8 @@ refuses to write when a match is not certain.
 - **Dry run** that performs every check and produces the full log without touching a file
 - **One-click restore** from the backups, always reverting to the pre-rebranding original
 - Cancellable at any point, with visible progress — designed for slow network shares
+- **Nothing is skipped in silence**: any file that may carry the logo but cannot be
+  handled is listed with the reason and a suggested remedy, so you can finish it by hand
 
 **Automating**
 - A **command line** covering everything the interface does, so the same campaign can run
@@ -371,6 +383,107 @@ certainly sized to it when the image was first inserted.
 
 ---
 
+## PDF files
+
+Tick **Also look inside PDF files** (or pass `--pdf`) and Proteus reads the raster images
+a PDF contains, compares them like any other file, and writes the new logo back into the
+document.
+
+### How a PDF stores a picture
+
+Every bitmap a PDF shows is an *image XObject*: a stream of encoded pixels plus a
+dictionary giving its width, height, colour space and compression. The page's content
+stream then paints it through a transformation matrix. Replacing a logo means swapping the
+stream and its dictionary while leaving the reference — and the matrix — untouched.
+
+Proteus uses [**pypdf**](https://pypi.org/project/pypdf/) for this, and specifically its
+own `ImageFile.replace()`, which re-encodes the picture and fixes `/Width`, `/Height`,
+`/ColorSpace`, `/BitsPerComponent` and `/Length` together. Editing the bytes directly does
+work — it was measured before this was built — but it means rebuilding the cross-reference
+table by hand, and it goes blind as soon as a producer uses object streams, which modern
+writers do. On a tool that overwrites files in place, that is not a trade worth making.
+
+### Any format may replace any picture
+
+Unlike an Office package, where the media file's extension is part of a content-type
+contract, a PDF image is re-encoded from pixels on the way in. The **same-format rule is
+therefore lifted for PDF rows**: a PNG can replace a JPEG-compressed logo, which is the
+normal case — brand assets arrive as PNG, and PDFs store them as JPEG.
+
+### One picture, one entry
+
+Rows appear as `brochure.pdf!/p2i1` — "the first image painted on page 2 of
+brochure.pdf". Position is used rather than the PDF object number because
+`PdfWriter(clone_from=…)` renumbers objects: an image read as object 1 comes back as
+object 4, so a number captured during the scan cannot find the picture again at write
+time. Before writing, Proteus checks the picture at that position still has the size the
+scan measured, and refuses if it does not — the document changed, and what is there now
+was never reviewed.
+
+Several pictures in the same PDF are replaced in **one rewrite and one backup**, exactly as
+for Office documents.
+
+### What cannot be replaced — and is reported instead
+
+| Case | Why | What Proteus does |
+|---|---|---|
+| **A logo drawn as vector paths** | It is not an image at all, so there is nothing to swap | Reports the file when you asked for it by name |
+| **Encrypted PDF** | The images cannot be read | Reports it, asks you to remove the password |
+| **Digitally signed PDF** | Any byte written invalidates the signature | Refuses and says so |
+| **Inline images** | They live inside the content stream, with no object to point at | Reports the page |
+| **JPEG 2000, JBIG2, CCITT fax** | Pillow cannot reconstruct the pixels, so the swap would be blind | Reports the picture |
+| **Damaged file** | Unparseable | Reports the error |
+
+**Vector logos are the important limitation, not a footnote.** Most print-quality PDFs —
+anything out of InDesign, Illustrator or LaTeX — draw the logo as paths. In practice PDF
+support covers *office* PDFs, not *press* PDFs. Proteus cannot see a vector logo, so it
+cannot tell you the logo is there; what it can say, and does, is "there is nothing
+replaceable in this file you pointed me at".
+
+---
+
+## Nothing is skipped in silence
+
+One rule runs through the whole tool:
+
+> **If a file might carry the logo but cannot be dealt with, it is reported — never
+> dropped.**
+
+A rebranding that quietly leaves three logos in place is worse than one that stops and
+names them, because nobody goes looking for a failure they were never told about. Every
+finding carries two things: what is wrong, and what you can do about it by hand.
+
+| Where you are | How findings reach you |
+|---|---|
+| **Interface** | A red bar above the results — *"N files may carry the logo but could not be handled automatically"* — with **Show details** listing each one and its remedy. Hidden entirely when there is nothing to report, so it never becomes wallpaper. |
+| **Log file** | One `WARNING` line per finding, with path and reason. |
+| **Command line** | Printed to **stderr**, and **`--quiet` does not suppress them**: progress is noise, this is not. |
+| **Scheduled job** | Exit code **5**. |
+
+Exit code 5 is the part that matters when nobody is watching. A run that replaced what it
+could and left a vector logo behind is *not* a clean run, and a scheduler that saw `0`
+would never tell anyone. So:
+
+```
+0  everything done
+5  done what it could — findings listed, a person is needed
+```
+
+### Why the vector warning depends on the pattern
+
+A PDF containing no raster image is only reported when its **name matched your pattern**.
+Search a tree of ten thousand PDFs by image content and reporting every one of them would
+produce a warning list nobody can read, which is as useless as no warning at all. Pointing
+at a file by name is what makes "nothing replaceable in here" a finding rather than noise.
+
+To audit a folder of PDFs deliberately, name them:
+
+```bash
+python main.py --scan /srv/print --source ./new-logos --pattern "*.pdf" --pdf
+```
+
+---
+
 ## Command line and unattended runs
 
 Everything the interface does is also available without one. Pass any argument and Proteus
@@ -432,6 +545,7 @@ The whole point of a scheduled job: the scheduler must be able to tell what happ
 | `2` | Nothing matched |
 | `3` | Bad request: missing or invalid arguments, unreadable folder |
 | `4` | Refused on safety grounds — uncertain hits or a distortion |
+| `5` | Did what it could, but findings need a person — see [Nothing is skipped in silence](#nothing-is-skipped-in-silence) |
 | `130` | Interrupted (Ctrl-C) |
 
 `2` is deliberately not an error. A weekly job finding nothing left to rebrand has succeeded.
@@ -448,6 +562,7 @@ how to find it
   --reference IMAGE...     one or more copies of the OLD logo — content search
   --similarity PCT         minimum visual similarity for --reference (default 90)
   --office                 also look inside .docx/.pptx/.xlsx documents
+  --pdf                    also look inside PDF files (raster images only)
 
 what to do
   --apply                  actually write. Without it nothing is modified.
@@ -552,6 +667,8 @@ Bulk-overwriting files on a shared drive deserves care. The guarantees are:
 | Replacing a file with nothing | Rows without a match cannot be enabled |
 | Content search hitting an unrelated image | Strict default threshold, similarity shown per row, uncertain hits coloured and logged |
 | A replacement silently distorting a picture in a document | Aspect ratios compared, mismatches coloured and counted in the summary |
+| A logo the tool cannot replace being left behind unnoticed | Reported in the interface, the log, on stderr and as exit code 5 — never dropped |
+| A PDF picture changing between the scan and the write | Stream size compared against what the scan measured; the write is refused |
 | A document rewritten while several of its pictures change | Grouped per document: rewritten once, backed up once, atomically |
 | Unsure about a whole campaign | Dry run reproduces the entire operation without writing |
 | Nobody watching an automated run | The command line is a dry run unless `--apply`, and refuses to write when any hit is uncertain or would distort |
@@ -617,6 +734,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── rebranding_tool.py            # Tkinter interface
 ├── i18n.py                       # Translation layer and language catalogues
 ├── office.py                     # Reading and rewriting pictures inside OOXML packages
+├── pdf.py                        # Reading and replacing raster images inside PDFs
 ├── cli.py                        # Command line and unattended runs
 ├── build.py                      # PyInstaller build
 ├── app.ico                       # Application icon (generated)
@@ -678,7 +796,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is spread across eight files:
+The suite is spread across nine files:
 
 | File | Covers |
 |---|---|
@@ -688,6 +806,7 @@ The suite is spread across eight files:
 | `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
 | `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
 | `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups and aspect-ratio guarding |
+| `tests/test_pdf.py` | Real PDFs built and re-opened with pypdf: finding, replacing, the staleness guard, and every case that must be reported instead |
 | `tests/test_cli.py` | Every exit code, the safety refusals and their overrides, reports, restore, output control and entry-point dispatch |
 | `tests/test_docs.py` | Screenshots referenced and shown, the price list agreeing with itself, and the AGPL text left verbatim |
 
@@ -718,6 +837,7 @@ cannot drift out of step with the code.
 |---|---|---|
 | `pillow` ≥ 9.1 | **Yes** | Image previews and resolution reading. 9.1 is the floor because of `Image.Resampling`. |
 | `tkinter` | **Yes** | The interface. Ships with Python, but packaged separately on Linux. |
+| `pypdf` ≥ 4.0 | For PDFs | Finding and replacing images inside PDF files. BSD-3-Clause. Without it the app runs normally and the PDF option reports that the package is missing. |
 | `ttkbootstrap` ≥ 1.10 | Optional | Nicer theming. Without it the app uses standard ttk themes; either major version works. |
 | `pyinstaller` ≥ 5.13 | Build only | Producing the standalone executable. |
 | `mss` | Docs only | Capturing the README screenshots. |
@@ -737,6 +857,10 @@ previews or read resolutions, and says so on the configuration tab.
 - **Legacy Office formats are out of scope.** `.doc`, `.ppt` and `.xls` are OLE compound
   files, not ZIP packages. So are EMF/WMF metafiles, which Office produces when a logo is
   *pasted* rather than inserted.
+- **In PDFs, only raster images are replaceable.** A logo drawn as vector paths — the norm
+  in print-quality PDFs — cannot be swapped, and Proteus cannot even see it. Encrypted and
+  signed PDFs are refused. All of these are reported rather than skipped, but reporting is
+  not replacing: PDF support is for office documents, not for press-ready artwork.
 - **Previews and resolutions are unavailable for EPS and PDF.** Pillow cannot read them
   without Ghostscript. Files of those types can still be matched, graded by name
   similarity, and replaced.

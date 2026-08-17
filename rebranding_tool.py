@@ -75,6 +75,11 @@ BUTTON_PALETTE = {
 
 PROGRESS_STYLE = "Brand.Horizontal.TProgressbar"
 
+#: Colour of the "needs attention" bar. Red rather than the orange used
+#: for uncertain matches: an uncertain match is a judgement call, this is
+#: work the tool could not do at all.
+PROBLEM_COLOUR = "#c0392b"
+
 PREVIEW_SIZE = (110, 80)
 MATCH_PREVIEW_SIZE = (90, 70)
 
@@ -110,6 +115,12 @@ class RebrandingToolApp:
         self._references: list[str] = [r for r in settings["references"]
                                        if os.path.isfile(r)]
         self._include_office = tk.BooleanVar(value=bool(settings["include_office"]))
+        self._include_pdf = tk.BooleanVar(value=bool(settings["include_pdf"]))
+
+        #: Findings the scan could not deal with. Never dropped: whatever
+        #: Proteus notices but cannot replace is put in front of the user, so a
+        #: logo left behind is a decision rather than an accident.
+        self._problems: list = []
 
         self.scanned_files: list[FileInfo] = []
         self.source_files: list[FileInfo] = []
@@ -561,7 +572,13 @@ class RebrandingToolApp:
             key_frame,
             text=t("Also look inside Office documents (.docx, .pptx, .xlsx)"),
             variable=self._include_office,
-        ).grid(row=6, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(6, 4))
+        ).grid(row=6, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(6, 2))
+
+        ttk.Checkbutton(
+            key_frame,
+            text=t("Also look inside PDF files (raster images only)"),
+            variable=self._include_pdf,
+        ).grid(row=7, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(0, 4))
 
         key_frame.columnconfigure(1, weight=1)
         self._refresh_references_label()
@@ -645,6 +662,19 @@ class RebrandingToolApp:
                    "Double-click a row to open its containing folder."),
             font=("Arial", 10), foreground="#666666",
         ).pack(anchor=tk.W, padx=8, pady=(0, 10))
+
+        # Findings the scan could not handle. Packed before the expanding tree
+        # so it reserves its space, and left un-packed until there is something
+        # to report — an empty warning bar teaches people to ignore the real one.
+        self._problem_bar = ttk.Frame(parent)
+        self._problem_lbl = ttk.Label(self._problem_bar, text="",
+                                      foreground=PROBLEM_COLOUR,
+                                      font=("Arial", 9, "bold"))
+        self._problem_lbl.pack(side=tk.LEFT, padx=8)
+        self._btn_problems = ttk.Button(
+            self._problem_bar, text=t("Show details"),
+            command=self._show_problems, **self.btn("outline"))
+        self._btn_problems.pack(side=tk.RIGHT, padx=8)
 
         tree_frame = ttk.Frame(parent)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
@@ -1060,6 +1090,7 @@ class RebrandingToolApp:
             "references": list(self._references),
             "similarity": int(self._similarity_var.get()),
             "include_office": self._include_office.get(),
+            "include_pdf": self._include_pdf.get(),
             "backup": self._backup_var.get(),
             "dry_run": self._dry_run_var.get(),
         })
@@ -1141,13 +1172,14 @@ class RebrandingToolApp:
             self._scan_worker,
             (source, scan, pattern, self._searching_by_content(),
              list(self._references), int(self._similarity_var.get()),
-             self._include_office.get()),
+             self._include_office.get(), self._include_pdf.get()),
             t("Scanning..."),
         )
 
     def _scan_worker(self, source: str, scan: str, pattern: str,
                      by_content: bool, references: list[str], threshold: int,
-                     include_office: bool = False):
+                     include_office: bool = False, include_pdf: bool = False):
+        self._problems = []
         if by_content:
             self.log(t("Content search started — folder: {folder} | "
                        "references: {count} | threshold: {threshold}%").format(
@@ -1244,11 +1276,65 @@ class RebrandingToolApp:
                 count=len(embedded)))
             scanned.extend(embedded)
 
+        if include_pdf:
+            def pdf_progress(done: int, of: int):
+                self._set_progress(
+                    done / max(of, 1) * 100,
+                    t("Scanning PDFs... {done}/{total}").format(done=done, total=of),
+                )
+
+            def on_problem(problem):
+                self._problems.append(problem)
+                self.log(t("  Needs attention: {path} — {reason}").format(
+                    path=problem.path, reason=problem.reason), logging.WARNING)
+
+            in_pdfs = core.scan_pdf_documents(
+                scan,
+                patterns=core.parse_patterns(pattern),
+                references=references if by_content else (),
+                threshold=threshold / 100.0,
+                exclude_dirs=exclude,
+                progress=pdf_progress,
+                cancel_event=self._cancel_event,
+                on_error=walk_error,
+                on_problem=on_problem,
+            )
+            self.log(t("Pictures found inside PDFs: {count}").format(
+                count=len(in_pdfs)))
+            scanned.extend(in_pdfs)
+
         self.source_files = source_files
         self.scanned_files = scanned
         self._ui(self._populate_scan_tree)
 
+    def _refresh_problem_bar(self):
+        """Show or hide the findings bar according to what the scan reported."""
+        if not self._problems:
+            self._problem_bar.pack_forget()
+            return
+        self._problem_lbl.config(text=t(
+            "⚠  {count} file(s) may carry the logo but could not be handled "
+            "automatically — they need manual attention.").format(
+                count=len(self._problems)))
+        # Before the tree, which expands: packing after would leave the bar
+        # clipped off the bottom of the tab.
+        self._problem_bar.pack(fill=tk.X, padx=8, pady=(6, 0), before=self._scan_tree.master)
+
+    def _show_problems(self):
+        """List every finding, with what the user can do about each."""
+        if not self._problems:
+            return
+        lines = []
+        for problem in self._problems:
+            lines.append(problem.path)
+            lines.append(f"    {problem.reason}")
+            if problem.hint:
+                lines.append(f"    → {problem.hint}")
+            lines.append("")
+        messagebox.showwarning(t("Needs manual attention"), "\n".join(lines).strip())
+
     def _populate_scan_tree(self, announce: bool = True):
+        self._refresh_problem_bar()
         self._clear_tree(self._scan_tree)
         for index, info in enumerate(self.scanned_files, 1):
             self._scan_tree.insert(

@@ -433,6 +433,67 @@ _IT: dict[str, str] = {
     "File": "File",
     "Source": "Sorgente",
     "Message": "Messaggio",
+
+    # -- PDF: findings the user has to act on by hand ----------------------
+    "PDF support needs the «pypdf» package, which is not installed.":
+        "Il supporto PDF richiede il pacchetto «pypdf», che non è installato.",
+    "Install it with: pip install pypdf":
+        "Installalo con: pip install pypdf",
+    "This PDF could not be read: {error}":
+        "Impossibile leggere questo PDF: {error}",
+    "Open it in a PDF reader to check it is not damaged.":
+        "Aprilo con un lettore PDF per verificare che non sia danneggiato.",
+    "This PDF is encrypted, so its images cannot be read.":
+        "Questo PDF è cifrato, quindi le sue immagini non sono leggibili.",
+    "Remove the password, then run the scan again.":
+        "Rimuovi la password, poi ripeti la scansione.",
+    "This PDF is digitally signed: replacing an image would invalidate the signature.":
+        "Questo PDF ha una firma digitale: sostituire un'immagine la "
+        "invaliderebbe.",
+    "Replace the logo in the source document and sign it again.":
+        "Sostituisci il logo nel documento di partenza e firmalo di nuovo.",
+    "Page {page} of this PDF could not be read: {error}":
+        "Impossibile leggere la pagina {page} di questo PDF: {error}",
+    "The other pages were still processed.":
+        "Le altre pagine sono state elaborate comunque.",
+    "Page {page} contains an inline image that cannot be replaced automatically.":
+        "La pagina {page} contiene un'immagine inline che non può essere "
+        "sostituita automaticamente.",
+    "Edit this page by hand in a PDF editor.":
+        "Modifica questa pagina a mano con un editor PDF.",
+    "Image on page {page} uses the unsupported encoding {encoding}.":
+        "L'immagine a pagina {page} usa la codifica non supportata {encoding}.",
+    "Replace this picture by hand in a PDF editor.":
+        "Sostituisci questa immagine a mano con un editor PDF.",
+    "Image on page {page} could not be decoded: {error}":
+        "Impossibile decodificare l'immagine a pagina {page}: {error}",
+    "No replaceable image found in this PDF: a logo drawn as vector artwork cannot be swapped.":
+        "Nessuna immagine sostituibile in questo PDF: un logo disegnato come "
+        "grafica vettoriale non può essere scambiato.",
+    "Replace it by hand, or export the page and edit the original.":
+        "Sostituiscilo a mano, oppure esporta la pagina e modifica l'originale.",
+    "Image {entry} is no longer in the document.":
+        "L'immagine {entry} non è più nel documento.",
+    "Image {entry} has changed since the scan; nothing was written.":
+        "L'immagine {entry} è cambiata dopo la scansione: non è stato scritto "
+        "nulla.",
+    "Image {name} could not be extracted for comparison.":
+        "Impossibile estrarre l'immagine {name} per il confronto.",
+
+    # -- PDF: interface --------------------------------------------------
+    "Also look inside PDF files (raster images only)":
+        "Cerca anche dentro i file PDF (solo immagini raster)",
+    "Scanning PDFs... {done}/{total}":
+        "Scansione PDF... {done}/{total}",
+    "Pictures found inside PDFs: {count}":
+        "Immagini trovate dentro i PDF: {count}",
+    "  Needs attention: {path} — {reason}":
+        "  Richiede attenzione: {path} — {reason}",
+    "⚠  {count} file(s) may carry the logo but could not be handled automatically — they need manual attention.":
+        "⚠  {count} file potrebbero contenere il logo ma non sono gestibili "
+        "automaticamente: richiedono un intervento manuale.",
+    "Show details": "Mostra dettagli",
+    "Needs manual attention": "Richiede intervento manuale",
 }
 
 #: Every available catalogue. English needs none: it is the source language.

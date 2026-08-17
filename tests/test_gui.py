@@ -979,3 +979,57 @@ def test_the_address_survives_a_language_switch(app):
 
     assert app._footer_email.cget("text") == core.CONTACT_EMAIL
     assert "AGPL-3.0" in app._footer_label.cget("text")
+
+
+# ---------------------------------------------------------------------------
+# Findings the scan could not handle
+# ---------------------------------------------------------------------------
+
+def test_the_findings_bar_stays_hidden_when_there_is_nothing_to_say(app):
+    """An always-visible warning bar teaches people to ignore the real one."""
+    app._problems = []
+    app._refresh_problem_bar()
+    # winfo_manager() rather than winfo_ismapped(): the scan tab is only mapped
+    # while it is the selected one, which says nothing about the bar itself.
+    assert app._problem_bar.winfo_manager() == ""
+
+
+def test_the_findings_bar_appears_and_counts(app):
+    import pdf
+
+    app._problems = [
+        pdf.Problem("a.pdf", "vector artwork", "do it by hand"),
+        pdf.Problem("b.pdf", "encrypted", "remove the password"),
+    ]
+    app._refresh_problem_bar()
+    app.root.update_idletasks()
+
+    assert app._problem_bar.winfo_manager() == "pack"
+    assert "2" in app._problem_lbl.cget("text")
+
+
+def test_the_details_dialog_names_every_finding_and_its_remedy(app, monkeypatch):
+    """
+    A finding without a remedy is only half reported: the user is told
+    something is wrong but not what to do about it.
+    """
+    import pdf
+    import rebranding_tool
+
+    shown = []
+    monkeypatch.setattr(rebranding_tool.messagebox, "showwarning",
+                        lambda title, message: shown.append(message))
+
+    app._problems = [pdf.Problem("flyer.pdf", "a vector logo", "edit it by hand")]
+    app._show_problems()
+
+    assert len(shown) == 1
+    assert "flyer.pdf" in shown[0]
+    assert "a vector logo" in shown[0]
+    assert "edit it by hand" in shown[0]
+
+
+def test_the_pdf_option_is_persisted(app, tmp_path):
+    app._include_pdf.set(True)
+    app._save_settings()
+    assert core.load_settings()["include_pdf"] is True
