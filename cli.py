@@ -48,6 +48,7 @@ import time
 
 import core
 import i18n
+import paths
 
 # Exit codes. Named because a scheduler branches on them.
 EXIT_OK = 0
@@ -154,6 +155,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="do not keep a .bak of each original (not advised)")
     action.add_argument("--restore", action="store_true",
                         help="restore originals from their backups and exit")
+    action.add_argument("--audit", action="store_true",
+                        help="inventory only: report what carries the logo and "
+                             "where, without pairing or replacing. --source is "
+                             "not needed.")
 
     safety = parser.add_argument_group("safety")
     safety.add_argument("--max-uncertain", type=int, default=0, metavar="N",
@@ -182,9 +187,20 @@ def collect_targets(args, reporter: Reporter) -> list[core.FileInfo]:
     targets: list[core.FileInfo] = []
 
     def walk_error(path: str, exc: Exception) -> None:
-        reporter.problem(f"  cannot read {path}: {exc}")
+        """
+        A folder the scan could not enter is a finding, not a log line.
 
-    exclude = [args.source] if core.is_within(args.source, args.scan) else []
+        "We scanned everything" is false while one branch of the tree was
+        refused, and only the user can say whether that branch mattered.
+        """
+        if isinstance(exc, OSError):
+            reason, hint = paths.describe_unreadable_folder(exc, path)
+        else:
+            reason, hint = str(exc), ""
+        reporter.finding(core.Problem(path, reason, hint))
+
+    exclude = ([args.source] if args.source and core.is_within(args.source, args.scan)
+               else [])
 
     if by_content:
         reporter.say("Searching by image content...")
@@ -228,6 +244,69 @@ def collect_targets(args, reporter: Reporter) -> list[core.FileInfo]:
         ))
 
     return targets
+
+
+def run_audit(args, reporter: Reporter) -> int:
+    """
+    Inventory the tree without pairing or replacing anything.
+
+    This is step one of a rebranding: before anybody commits to a date, they
+    need to know how many copies of the logo exist and in which departments.
+    `--source` is not required, because at that stage the new logo may not have
+    been designed yet — and requiring it would have forced people to invent an
+    empty folder just to be allowed to look.
+    """
+    if not os.path.isdir(args.scan):
+        reporter.problem(f"Not a folder: {args.scan}")
+        return EXIT_BAD_REQUEST
+    if args.reference:
+        for problem in core.validate_references(args.reference):
+            reporter.problem(problem)
+            return EXIT_BAD_REQUEST
+
+    reporter.say(f"Inventory of {args.scan}")
+    targets = collect_targets(args, reporter)
+
+    breakdown = core.audit_breakdown(targets)
+    reporter.say("")
+    reporter.say(f"{breakdown['files']} file(s) carry the logo"
+                 + (f", {breakdown['embedded']} of them inside documents"
+                    if breakdown["embedded"] else "")
+                 + f" — {core.format_size(breakdown['bytes'])} in total")
+
+    if breakdown["by_format"]:
+        reporter.say("")
+        reporter.say("By format:")
+        for fmt, count in breakdown["by_format"].items():
+            reporter.say(f"  {count:>6}  {fmt}")
+
+    if breakdown["by_folder"]:
+        reporter.say("")
+        reporter.say("By folder:")
+        # Truncated on purpose, and the truncation is stated: a silent top-20
+        # would read as the whole picture.
+        shown = list(breakdown["by_folder"].items())
+        for folder, count in shown[:20]:
+            reporter.say(f"  {count:>6}  {folder}")
+        if len(shown) > 20:
+            reporter.say(f"  ... and {len(shown) - 20} more folders "
+                         f"(all of them are in the CSV)")
+
+    if reporter.findings:
+        reporter.say("")
+        reporter.say(f"{len(reporter.findings)} finding(s) will need manual work "
+                     f"— listed on stderr and in the report")
+
+    if args.report:
+        try:
+            core.export_audit_csv(targets, reporter.findings, args.report)
+            reporter.say(f"Report written to {args.report}")
+        except OSError as exc:
+            reporter.problem(f"Could not write the report: {exc}")
+
+    if not targets:
+        return _finish(EXIT_NOTHING_FOUND, reporter)
+    return _finish(EXIT_OK, reporter)
 
 
 def check_safety(args, matches: list[core.Match], reporter: Reporter) -> int | None:
@@ -306,10 +385,15 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_BAD_REQUEST
         return run_restore(args, reporter)
 
-    if not args.source:
-        parser.error("--source is required (or use --restore)")
+    if args.audit and args.apply:
+        parser.error("--audit never writes, so --apply makes no sense with it")
+    if not args.source and not args.audit:
+        parser.error("--source is required (or use --restore, or --audit)")
     if not args.pattern and not args.reference and not args.office and not args.pdf:
         parser.error("give at least one of --pattern, --reference, --office or --pdf")
+
+    if args.audit:
+        return run_audit(args, reporter)
 
     problems = core.validate_config(
         args.source, args.scan, args.pattern,

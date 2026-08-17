@@ -149,16 +149,39 @@ Three things make this genuinely hard, and each maps to a feature:
 
 The order below is the one the tool is designed around, and each step is safe to stop at.
 
-**1 — Take an inventory before touching anything.** Run a dry run by content, with a copy
-of the old logo as the reference, and export the CSV. That list *is* the scope of the
-project: how many files, in which departments, in what formats.
+**1 — Take an inventory before touching anything.** `--audit` counts the copies and says
+where they are, without pairing or replacing. **`--source` is not required**: at this stage
+the new logo may not even have been designed yet, and demanding one would have forced people
+to invent an empty folder just to be allowed to look.
 
 ```bash
-python main.py --scan //fs01/shared --source ./brand-2026                --reference ./brand-old/logo.png --office --pdf                --report inventory.csv
+python main.py --scan //fs01/shared --reference ./brand-old/logo.png \
+               --office --pdf --audit --report inventory.csv
 ```
 
-Nothing is written — `--apply` is absent — so this is safe to run on production shares
-during office hours.
+```
+412 file(s) carry the logo, 168 of them inside documents — 84.2 MB in total
+
+By format:
+     190  PNG
+     134  JPG
+      61  PDF
+      27  SVG
+
+By folder:
+      88  //fs01/shared/Marketing/Templates
+      64  //fs01/shared/Sales/Offers
+      ...
+```
+
+That output *is* the scope of the project, in the terms whoever approves it will ask about:
+how many, in which departments, in what formats. The CSV holds every row, and the console
+states how many folders it truncated rather than letting the top twenty read as the whole
+picture.
+
+`--audit` cannot write, and combining it with `--apply` is refused as an argument error
+rather than silently ignored — so this is safe to run against production shares during
+office hours.
 
 **2 — Read the findings, not just the matches.** The run also lists what it *cannot* do:
 pasted logos, protected documents, vector PDFs. That list is the manual work item, and it is
@@ -659,6 +682,8 @@ what to do
   --apply                  actually write. Without it nothing is modified.
   --no-backup              do not keep a .bak of each original (not advised)
   --restore                restore originals from their backups and exit
+  --audit                  inventory only: what carries the logo and where.
+                           No --source needed, and it never writes.
 
 safety
   --max-uncertain N        tolerate at most N hits below 95% similarity
@@ -760,6 +785,9 @@ Bulk-overwriting files on a shared drive deserves care. The guarantees are:
 | A replacement silently distorting a picture in a document | Aspect ratios compared, mismatches coloured and counted in the summary |
 | A logo the tool cannot replace being left behind unnoticed | Reported in the interface, the log, on stderr and as exit code 5 — never dropped |
 | A PDF picture changing between the scan and the write | Stream size compared against what the scan measured; the write is refused |
+| A folder the scan could not enter | Reported as a finding: "we scanned everything" is false while one branch was refused |
+| A path longer than Windows allows | The extended-length form is used for every read and write, so 260 characters is not a ceiling |
+| A file open in Word or Excel | Reported as "open in another program", with the remedy — not as a permissions error |
 | A document rewritten while several of its pictures change | Grouped per document: rewritten once, backed up once, atomically |
 | Unsure about a whole campaign | Dry run reproduces the entire operation without writing |
 | Nobody watching an automated run | The command line is a dry run unless `--apply`, and refuses to write when any hit is uncertain or would distort |
@@ -826,6 +854,7 @@ showing a placeholder. Three tests keep the catalogues honest:
 ├── i18n.py                       # Translation layer and language catalogues
 ├── office.py                     # Reading and rewriting pictures inside OOXML packages
 ├── pdf.py                        # Reading and replacing raster images inside PDFs
+├── paths.py                      # Long Windows paths and readable filesystem errors
 ├── cli.py                        # Command line and unattended runs
 ├── build.py                      # PyInstaller build
 ├── app.ico                       # Application icon (generated)
@@ -887,7 +916,7 @@ python -m pytest                 # Windows / macOS
 xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
 ```
 
-The suite is spread across nine files:
+The suite is spread across ten files:
 
 | File | Covers |
 |---|---|
@@ -900,6 +929,7 @@ The suite is spread across nine files:
 | `tests/test_pdf.py` | Real PDFs built and re-opened with pypdf: finding, replacing, the staleness guard, and every case that must be reported instead |
 | `tests/test_cli.py` | Every exit code, the safety refusals and their overrides, reports, restore, output control and entry-point dispatch |
 | `tests/test_docs.py` | Screenshots referenced and shown, the price list agreeing with itself, and the AGPL text left verbatim |
+| `tests/test_paths.py` | Extended-length paths, and every filesystem error turned into a reason with a remedy. Two tests need real Windows and run in CI there |
 
 GUI tests run headless and are skipped automatically where no display exists. A `conftest`
 fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`

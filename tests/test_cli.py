@@ -464,3 +464,101 @@ def test_pdf_alone_is_enough_to_start(tmp_path):
     tree = _pdf_tree(tmp_path)
     assert run("--scan", tree["scan"], "--source", tree["source"],
                "--pdf") in (cli.EXIT_OK, cli.EXIT_ATTENTION)
+
+
+# ---------------------------------------------------------------------------
+# Inventory mode
+# ---------------------------------------------------------------------------
+
+def test_audit_needs_no_source_folder(tree, capsys):
+    """
+    Step one of a rebranding: count the copies before the new logo exists.
+
+    Requiring --source here would have forced people to invent an empty folder
+    just to be allowed to look.
+    """
+    code = run("--scan", tree["scan"], "--pattern", "logo*.png", "--audit")
+
+    assert code == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "Inventory of" in out
+    assert "By format:" in out and "By folder:" in out
+
+
+def test_audit_writes_nothing(tree):
+    before = open(tree["target"], "rb").read()
+    run("--scan", tree["scan"], "--reference", tree["reference"], "--audit")
+    assert open(tree["target"], "rb").read() == before
+
+
+def test_audit_refuses_apply(tree):
+    """The two are contradictory, so it is an argument error, not a silent skip."""
+    with pytest.raises(SystemExit):
+        run("--scan", tree["scan"], "--pattern", "logo*.png", "--audit", "--apply")
+
+
+def test_audit_counts_by_format_and_folder(tree, capsys):
+    code = run("--scan", tree["scan"], "--reference", tree["reference"], "--audit")
+    out = capsys.readouterr().out
+
+    assert code == cli.EXIT_OK
+    assert "2 file(s) carry the logo" in out
+    assert "PNG" in out
+
+
+def test_audit_reports_nothing_found(tmp_path):
+    empty = tmp_path / "empty"
+    os.makedirs(empty, exist_ok=True)
+    assert run("--scan", str(empty), "--pattern", "logo*.png",
+               "--audit") == cli.EXIT_NOTHING_FOUND
+
+
+def test_audit_csv_holds_both_halves_of_the_job(tmp_path, capsys):
+    """
+    The findings share the file with the matches on purpose. Two files would let
+    somebody circulate the encouraging half alone, and an inventory exists to
+    size the whole job — including the part no tool will do.
+    """
+    tree = _pdf_tree(tmp_path)
+    report = tmp_path / "inventory.csv"
+
+    run("--scan", tree["scan"], "--pattern", "*.pdf", "--pdf", "--audit",
+        "--report", str(report))
+
+    rows = report.read_text(encoding="utf-8-sig").splitlines()
+    assert rows[0].startswith("Status;Folder;File")
+    assert any(row.startswith("found;") for row in rows[1:])
+    assert any(row.startswith("needs attention;") for row in rows[1:])
+    assert any("vector" in row for row in rows[1:])
+
+
+def test_audit_on_a_missing_folder_is_a_bad_request(tmp_path):
+    assert run("--scan", "/no/such/folder", "--pattern", "logo*.png",
+               "--audit") == cli.EXIT_BAD_REQUEST
+
+
+def test_an_unreadable_folder_becomes_a_finding(tree, monkeypatch, capsys):
+    """
+    "We scanned everything" is false while one branch of the tree was refused,
+    so a folder the scan could not enter is a finding and changes the exit code.
+    """
+    import errno
+
+    real_walk = os.walk
+
+    def refusing_walk(top, **kwargs):
+        onerror = kwargs.get("onerror")
+        if onerror:
+            exc = PermissionError("denied")
+            exc.errno = errno.EACCES
+            exc.filename = os.path.join(str(top), "finance")
+            onerror(exc)
+        yield from real_walk(top, **kwargs)
+
+    monkeypatch.setattr(core.os, "walk", refusing_walk)
+    code = run("--scan", tree["scan"], "--pattern", "logo*.png", "--audit")
+
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_ATTENTION
+    assert "finance" in captured.err
+    assert "not examined" in captured.err

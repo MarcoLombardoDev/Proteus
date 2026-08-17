@@ -21,7 +21,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: makes the stale-entry guard report its strings as unused, and lets its
 #: untranslated ones through unnoticed.
 TRANSLATED_MODULES = ("core.py", "rebranding_tool.py", "pdf.py", "office.py",
-                      "cli.py")
+                      "paths.py", "cli.py")
 
 
 # ---------------------------------------------------------------------------

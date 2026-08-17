@@ -28,6 +28,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 
+import paths
 from i18n import t
 
 #: Package formats built on OOXML. The macro-enabled and template variants use
@@ -149,7 +150,7 @@ def list_images(document: str) -> tuple[list[EmbeddedImage], list[Problem]]:
     metafiles: list[str] = []
 
     try:
-        with zipfile.ZipFile(document) as package:
+        with zipfile.ZipFile(paths.long_path(document)) as package:
             for info in package.infolist():
                 if info.is_dir():
                     continue
@@ -185,7 +186,7 @@ def list_images(document: str) -> tuple[list[EmbeddedImage], list[Problem]]:
 def _unreadable(document: str, exc: Exception) -> tuple[str, str]:
     """Reason and remedy for a package that would not open."""
     try:
-        with open(document, "rb") as handle:
+        with open(paths.long_path(document), "rb") as handle:
             protected = handle.read(4) == OLE_MAGIC
     except OSError:
         protected = False
@@ -201,7 +202,7 @@ def _unreadable(document: str, exc: Exception) -> tuple[str, str]:
 def extract(document: str, entry: str) -> bytes | None:
     """Raw bytes of one embedded image, or None if it cannot be read."""
     try:
-        with zipfile.ZipFile(document) as package:
+        with zipfile.ZipFile(paths.long_path(document)) as package:
             return package.read(entry)
     except (zipfile.BadZipFile, KeyError, OSError, RuntimeError):
         return None
@@ -247,12 +248,12 @@ def write_replacements(document: str, replacements: dict[str, bytes]) -> None:
     Raises on failure; the caller decides how to report it.
     """
     folder = os.path.dirname(document) or "."
-    fd, tmp_path = tempfile.mkstemp(prefix=".proteus_", dir=folder)
+    fd, tmp_path = tempfile.mkstemp(prefix=".proteus_", dir=paths.long_path(folder))
     os.close(fd)
 
     try:
-        with zipfile.ZipFile(document) as source, \
-                zipfile.ZipFile(tmp_path, "w") as target:
+        with zipfile.ZipFile(paths.long_path(document)) as source, \
+                zipfile.ZipFile(paths.long_path(tmp_path), "w") as target:
             for info in source.infolist():
                 data = (replacements[info.filename]
                         if info.filename in replacements
@@ -268,7 +269,7 @@ def write_replacements(document: str, replacements: dict[str, bytes]) -> None:
                 copied.create_system = info.create_system
                 target.writestr(copied, data)
 
-        os.replace(tmp_path, document)
+        os.replace(paths.long_path(tmp_path), paths.long_path(document))
         tmp_path = None
     finally:
         if tmp_path and os.path.exists(tmp_path):
