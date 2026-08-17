@@ -274,3 +274,33 @@ def test_a_tag_push_publishes_a_github_release_with_the_executable_attached():
 
     assert release_step["if"] == "startsWith(github.ref, 'refs/tags/')"
     assert "dist/Proteus.exe" in release_step["run"]
+
+
+def test_the_release_gets_user_facing_title_and_notes_not_raw_commit_log():
+    """
+    Regression: --generate-notes reads the commit log since the last tag.
+    This repo pushes straight to main with no PRs, so that is just the latest
+    commit message — internal engineering text, not something a downloader
+    should read as "what's new". A fixed, human-written blurb replaces it.
+    """
+    job = _load_workflow("build.yml")["jobs"]["build"]
+    release_step = next(step for step in job["steps"]
+                        if "gh release" in step.get("run", ""))
+
+    assert "--generate-notes" not in release_step["run"]
+    env = release_step.get("env", {})
+    assert "Proteus.exe" in env.get("RELEASE_NOTES", "")
+
+
+def test_a_pre_existing_release_still_gets_the_right_title_and_notes():
+    """
+    `gh release create` fails outright if a release for the tag already
+    exists — which happens when the tag is made via GitHub's "Draft a new
+    release" page, since that creates the release object together with the
+    tag. Without a `gh release edit` fallback, that pre-existing release
+    keeps whatever title/notes the web UI defaulted to, forever.
+    """
+    job = _load_workflow("build.yml")["jobs"]["build"]
+    release_step = next(step for step in job["steps"]
+                        if "gh release" in step.get("run", ""))
+    assert "gh release edit" in release_step["run"]
