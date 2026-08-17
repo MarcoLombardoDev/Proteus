@@ -92,8 +92,23 @@ def describe_os_error(exc: OSError, path: str) -> tuple[str, str]:
                 t("Close the file and run the replacement again."))
 
     if code == errno.EACCES:
-        # On Windows EACCES also covers a read-only file, which is why the
-        # remedy names both possibilities rather than guessing.
+        # Windows reports a rename over an exclusively-held file as
+        # ERROR_ACCESS_DENIED (5), not ERROR_SHARING_VIOLATION (32) — measured
+        # on a CI runner, having assumed otherwise first. So the two cases
+        # arrive here indistinguishable by error code, and have to be told
+        # apart another way.
+        #
+        # On Windows `os.access(W_OK)` inspects only the read-only attribute,
+        # nothing about open handles. If it says the file is writable and the
+        # write was refused anyway, another program is holding it — which on a
+        # live share is the overwhelmingly common case, and the one with a
+        # ten-second fix.
+        if os.name == "nt" and os.path.exists(path) and os.access(path, os.W_OK):
+            return (t("«{name}» cannot be replaced: it is probably open in "
+                      "another program.").format(name=os.path.basename(path)),
+                    t("Close the file and run the replacement again. If it is "
+                      "not open anywhere, check the folder permissions."))
+
         return (t("Access denied to «{name}».").format(name=os.path.basename(path)),
                 t("Check the file is not read-only and that you have write "
                   "permission on the folder. On Windows it may also be open in "

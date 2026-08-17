@@ -526,6 +526,13 @@ _IT: dict[str, str] = {
         "sostituito.",
     "Close the file and run the replacement again.":
         "Chiudi il file e ripeti la sostituzione.",
+    "«{name}» cannot be replaced: it is probably open in another program.":
+        "«{name}» non può essere sostituito: probabilmente è aperto in un altro "
+        "programma.",
+    "Close the file and run the replacement again. If it is not open anywhere, "
+    "check the folder permissions.":
+        "Chiudi il file e ripeti la sostituzione. Se non è aperto da nessuna "
+        "parte, verifica i permessi sulla cartella.",
     "Access denied to «{name}».": "Accesso negato a «{name}».",
     "Check the file is not read-only and that you have write permission on the folder. "
     "On Windows it may also be open in another program.":
