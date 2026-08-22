@@ -34,10 +34,11 @@ Most people do not. Read this before reading the price list.
 | Use Proteus inside your organisation, however many people, however many machines | **AGPL — free.** Nothing to buy, nothing to declare. |
 | Modify it for your own internal use and keep the changes to yourself | **AGPL — free.** |
 | Publish a fork, or ship a modified version to someone else | **AGPL — free**, provided you release your modified source under AGPL-3.0. |
-| Ship Proteus, or code derived from it, inside a **closed-source product** | **Commercial** |
-| Run a modified Proteus as a **hosted or SaaS service**, without publishing your source | **Commercial** |
-| Redistribute it to your customers under **your own name or branding** | **Commercial** |
-| Your organisation's policy forbids AGPL code, and you need it in writing | **Commercial** |
+| Run a modified Proteus as a closed-source internal tool, for your own staff only | **Commercial** |
+| Ship Proteus, or code derived from it, inside a **closed-source product** you distribute | **Redistribution** |
+| Run a modified Proteus as a **hosted or SaaS service for your customers**, without publishing your source | **Redistribution** |
+| Redistribute it to your customers under **your own name or branding** | **Redistribution** |
+| Your organisation's policy forbids AGPL code, and you need it in writing | **Commercial** (or **Redistribution**, if you also distribute) |
 
 **Internal use is free, permanently, for organisations of any size.** Anyone telling you
 otherwise about an AGPL project is mistaken. Buy a commercial licence when the AGPL's
@@ -47,50 +48,172 @@ The dividing line is one rule: **AGPL-3.0 is free as long as the source stays op
 
 ---
 
-## 2. What the commercial licence grants
+## 2. Licence structure
 
-Subject to payment and to the scope of the tier purchased, a non-exclusive,
-non-transferable, worldwide licence to:
+```
+PRODUCT LICENSING
+│
+├── Community
+│   └── AGPL-3.0
+│
+├── Commercial
+│   ├── Small       — 1–49 employees
+│   ├── Medium      — 50–249 employees
+│   ├── Large       — 250–999 employees
+│   └── Enterprise  — 1,000+ employees / Corporate Group
+│
+└── Redistribution
+    ├── Standard
+    └── Enterprise
+```
 
-1. use, copy and modify Proteus;
-2. incorporate it, in whole or in part, into your own products and services;
-3. distribute it in binary or source form as part of your product, with no obligation to
-   publish your own source;
-4. deploy it as part of a network-accessible service without triggering AGPL section 13;
-5. sublicense these rights to your end users **solely as part of your product**, and not
-   as a standalone competing tool.
+Three kinds of licence, not four price points on one list:
 
-You also receive the full source of the licensed version, and the right to modify it with
-no obligation to contribute anything back.
+- **Community** — the AGPL-3.0 build. Free, unlimited, internal use of any size.
+- **Commercial** — removes the AGPL's copyleft obligation for **closed-source internal
+  use**. Sized by the licensee's employee count. See §3.
+- **Redistribution** — grants the right to **ship Proteus, or a derivative of it, to third
+  parties** — embedded, OEM'd, resold, or offered as a service to your own customers. See
+  §4. It is a different kind of licence from Commercial, not a bigger version of it: a
+  five-person software house redistributing a product to ten thousand customers needs
+  Redistribution, not a large Commercial tier.
 
-The licence covers the Project Owner's copyright in Proteus. It does not grant rights to the
-third-party components in §9.
+Every tier, in every branch, is the **same software** under §1 of this document: no
+feature is gated behind a higher tier.
 
 ---
 
-## 3. Price list
+## 3. What the Commercial licence grants
 
-All prices in **EUR, excluding VAT**, per **licensee organisation** — the legal entity and
-its majority-owned subsidiaries. Seats are never counted: you are not billed per developer,
-per user or per installation.
+Subject to payment and to the tier purchased, a non-exclusive, non-transferable licence,
+for **one named legal entity**, to:
+
+1. use, copy and modify Proteus;
+2. deploy it as an internal, closed-source tool, without publishing your modified source;
+3. run it as an internally-accessed network service without triggering AGPL section 13,
+   provided access is limited to your own authorised users and installations.
+
+It does **not** automatically include, at any Commercial tier:
+
+- redistribution to third parties, in any form;
+- OEM or embedding in a product you ship;
+- sublicensing;
+- use by other companies in the same corporate group, unless the Enterprise tier's
+  group-wide scope has been explicitly agreed and named in the certificate.
+
+Any of those needs a **Redistribution licence** instead of, or alongside, Commercial — see
+§4.
+
+### 3.1 The four Commercial tiers
+
+| Tier | Employees | |
+|---|---|---|
+| **Small** | 1–49 | Same model as every Commercial tier below, sized for a small organisation: one legal entity, internal use, non-redistributable. |
+| **Medium** | 50–249 | Same model, applied to a mid-sized organisation. Still organisation-based, internal-use, single legal entity, non-redistributable. |
+| **Large** | 250–999 | Same model, applied to a larger organisation. Still limited to the internal use of the one authorised legal entity. |
+| **Enterprise** | 1,000+, **or** any Corporate Group scope | Covers at least one of: an organisation of 1,000+ employees; an organisation belonging to a corporate group; a use case that needs a group-wide perimeter; use by more than one legal entity of the same group, when explicitly authorised. May be named **Enterprise / Group Commercial Licence** in the certificate, which must state exactly which legal entities are included. |
+
+Belonging to a large group does not, by itself, let a small subsidiary's Small-tier
+licence cover the rest of the group. A group-wide perimeter is never implied — it must be
+explicitly agreed and named entity by entity. See §3.3.
+
+### 3.2 Employee count
+
+Unless the applicable Enterprise / Group agreement states a different scope:
+
+> Employee count refers to the total number of employees of the licensed legal entity.
+
+It does **not** automatically include customers, end users, suppliers, partners, or
+external consultants.
+
+### 3.3 Corporate Group
+
+A **Corporate Group** is a set of companies directly or indirectly controlled by the same
+parent company, or otherwise part of the same corporate structure, as defined in the
+applicable agreement.
+
+Membership in a group is not, by itself, authorisation for the group. A small company
+belonging to a large group cannot use a Small-tier licence to extend rights to the rest of
+the group — a group-wide perimeter must be expressly authorised and stated in the
+Enterprise certificate.
+
+---
+
+## 4. What the Redistribution licence grants
+
+A **Redistribution licence** is required whenever Proteus, or any part of it, is passed on
+to a third party — regardless of organisation size. Examples:
+
+- incorporation into another piece of software;
+- embedding;
+- distribution alongside a proprietary product;
+- distribution to customers or to end users;
+- commercialisation of a derivative product;
+- integration into a proprietary application;
+- OEM scenarios;
+- distribution as a component of a commercial solution.
+
+"OEM" is used above as an example of a Redistribution scenario, not as a separate category
+of its own — see §14 in spirit: OEM, embedded and other redistribution scenarios are all
+covered by the Redistribution licence.
+
+Subject to payment and to the specific agreement, a Redistribution licence may grant:
+
+1. modification, integration and embedding rights;
+2. the right to distribute the result, in source or binary form, with no obligation to
+   publish your own source;
+3. the right to commercialise the resulting product;
+4. sublicensing of these rights to your own end users, **solely as part of your product**,
+   not as a standalone competing tool.
+
+It does **not** automatically grant: exclusivity; unlimited sublicensing; rights to the
+Project Owner's trademarks; rights to third-party dependencies (§9); or transfer of the
+licence to another party.
+
+### 4.1 Redistribution — Standard
+
+For ordinary commercial redistribution: software houses, ISVs, integrators, commercial
+developers, and businesses embedding Proteus in a product, distributed to a non-exceptional
+number of customers or installations.
+
+### 4.2 Redistribution — Enterprise
+
+For redistribution at scale: large software houses and groups, worldwide distribution,
+high-volume products, millions of users or installations, large-scale commercial
+platforms, and large OEM programmes.
+
+Unlike Commercial, this tier is **not** primarily sized by employee count. The relevant
+factors, weighed per case in the agreement, include: number of products; number of
+customers; number of installations; distribution volume; number of end users; territory;
+the product's revenue; number of legal entities involved; and the level of support
+required. The exact perimeter is defined in the commercial agreement, not by a fixed
+threshold in this document.
+
+---
+
+## 5. Price list
+
+All prices in **EUR, excluding VAT**, per **licensee organisation** — the legal entity and,
+where the tier says so, the agreed group perimeter. Seats are never counted: you are not
+billed per developer, per user or per installation.
 
 | Tier | Price | Scope |
 |---|---:|---|
 | **Community** | **Free** | Everything Proteus does, under AGPL-3.0. Unlimited internal use. |
-| **Internal** | **€500 / year** | Closed-source internal use, one legal entity. No redistribution. |
-| **OEM / Redistribution** | **€1,900 / year** | Embed it in a product you sell, or run it as a hosted service for your customers. |
-| **Enterprise** | **from €2,900 / year** | Group-wide. Unlimited products and services. Written answers to procurement and legal questionnaires. |
-| **Perpetual — Internal scope** | **€1,500** one-off | Internal scope, bought once. Covers the major version current at purchase. |
-| **Perpetual — OEM scope** | **from €7,000** one-off | OEM scope, bought once. Covers the major version current at purchase. Priced per case. |
+| **Commercial — Small** | **€500 / year** | 1–49 employees. Closed-source internal use, one legal entity. |
+| **Commercial — Medium** | **€1,000 / year** | 50–249 employees. Same model as Small. |
+| **Commercial — Large** | **€1,800 / year** | 250–999 employees. Same model as Small and Medium. |
+| **Commercial — Enterprise** | **from €2,900 / year** | 1,000+ employees, or a group-wide perimeter. Unlimited internal products and services within the agreed scope. Written answers to procurement and legal questionnaires. |
+| **Redistribution — Standard** | **€1,900 / year** | Ordinary commercial redistribution: embed it in a product you sell, or run it as a hosted service for your customers. |
+| **Redistribution — Enterprise** | **from €7,000 / year** | Large-scale redistribution: worldwide distribution, high-volume products, large OEM programmes. Scope priced per case. |
 
 ### What every paid licence includes
 
-The same four things, at every tier above Community:
+The same commitments, at every tier above Community:
 
-- **Email support** — see §4. Always included, never sold separately to a paying customer.
-- **Updates for the whole term**, and a **perpetual fallback**: every version released while
-  your subscription is active stays licensed to you forever. If the subscription lapses you
-  keep running what you had, you simply stop receiving new versions under commercial terms.
+- **Email support** — see §6. Always included, never sold separately to a paying customer.
+- **Updates for the whole term.** Every version released while your subscription is active
+  is licensed to you; there is no separate charge for upgrading within a term.
 - **No retroactive charge.** Renewals are priced at the rate in force when you first bought,
   for as long as you renew without a gap.
 - **Cancel any time.** No notice period, no auto-renewal trap. An invoice is issued per
@@ -100,12 +223,12 @@ The same four things, at every tier above Community:
 
 | Who | What |
 |---|---|
-| Fewer than 10 employees **and** under €1M annual revenue | **50% off** any annual tier |
+| Fewer than 10 employees **and** under €1M annual revenue | **50% off** any Commercial tier |
 | Registered non-profits, accredited academic institutions, published research | **Free commercial licence** — ask |
 
 ---
 
-## 4. Support
+## 6. Support
 
 **Every paying customer gets support. It is included in the price, at every paid tier, and
 it runs over email.** There is no support product to buy separately and no tier that leaves
@@ -114,9 +237,11 @@ you on your own.
 | Tier | Support | Target first response |
 |---|---|---|
 | Community | GitHub Issues, best effort | — |
-| Internal | Email | 5 business days |
-| OEM / Redistribution | Email | 3 business days |
-| Enterprise | Email, private channel | 2 business days |
+| Commercial — Small / Medium | Email | 5 business days |
+| Commercial — Large | Email | 3 business days |
+| Commercial — Enterprise | Email, private channel | 2 business days |
+| Redistribution — Standard | Email | 3 business days |
+| Redistribution — Enterprise | Email, private channel | 2 business days |
 
 What "support" means here, stated plainly so nothing is inferred:
 
@@ -127,11 +252,11 @@ What "support" means here, stated plainly so nothing is inferred:
   human reply, not how quickly a defect is resolved. Confirmed bugs are prioritised over
   new features, but no repair window is guaranteed at any tier.
 - **Not included:** building your workflow for you, writing features, or operating the
-  software on your behalf. That is custom development — see §5.
+  software on your behalf. That is custom development — see §7.
 
 ---
 
-## 5. Custom development
+## 7. Custom development
 
 Anything that changes the software for you — a new feature, an integration, a format, a
 connector, a bespoke build — is **never included in a licence fee**, at any tier.
@@ -155,22 +280,24 @@ Two things worth knowing before you ask:
 
 ---
 
-## 6. How to buy
+## 8. How to buy
 
 1. **Ask.** Write to **[marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20commercial%20licence%20enquiry)**.
-   Say what you intend to build and roughly how big your organisation is. Use email rather
-   than a public issue: what you are building is usually not something you want indexed.
-2. **Confirm the tier.** You get a written statement of which tier applies and why, so
-   there is no ambiguity later.
+   Say what you intend to build, roughly how big your organisation is (for Commercial), or
+   how the software will reach third parties (for Redistribution). Use email rather than a
+   public issue: what you are building is usually not something you want indexed.
+2. **Confirm the tier.** You get a written statement of which tier applies and why — for
+   Commercial, the employee count that was used; for Redistribution, the factors from §4.2
+   that were weighed — so there is no ambiguity later.
 3. **Invoice.** Issued in EUR, payable by bank transfer within 30 days.
 4. **Certificate.** On payment you receive a signed licence certificate naming your
-   organisation, the tier, the term and the covered products. That certificate — not a key
-   file — is the licence.
+   organisation (and, at Enterprise scope, every included legal entity), the tier, the term
+   and the covered products. That certificate — not a key file — is the licence.
 
 To get a concrete quote in one round instead of three, include: your **company** and the
-legal entity that would hold the licence; the **intended use** (internal, embedded in a
-product you sell, or operated as a service); **deployment scale**; the **tier** you think
-fits; and whether you need **custom development**.
+legal entity that would hold the licence; the **intended use** (internal, or distributed to
+third parties); **organisation size** or **distribution scale**, as applicable; the **tier**
+you think fits; and whether you need **custom development**.
 
 There is **no licence key, no activation, no phone-home.** The software behaves identically
 whether or not you have paid. Compliance is contractual and self-declared; there is no
@@ -178,9 +305,9 @@ audit clause.
 
 ---
 
-## 7. Term, warranty and liability
+## 9. Term, warranty and liability
 
-- **Term.** Annual from the invoice date, unless the tier says otherwise.
+- **Term.** Annual from the invoice date, unless the certificate says otherwise.
 - **Updates.** Included for the duration of the term.
 - **Warranty.** Proteus is provided **as is**. No warranty of merchantability, fitness for a
   particular purpose, or non-infringement. Read the [Disclaimer](README.md#disclaimer) — this tool overwrites files in place.
@@ -188,27 +315,30 @@ audit clause.
   fees paid in the twelve months preceding the claim**. Liability is not excluded where it
   cannot lawfully be excluded — death or personal injury caused by negligence, fraud, or
   wilful misconduct.
-- **Indemnity.** No IP indemnity at Internal or OEM tier. Enterprise and perpetual licences
-  may include one; ask, and it will be stated in the certificate.
+- **Indemnity.** No IP indemnity at Commercial Small/Medium/Large or Redistribution
+  Standard. Commercial Enterprise and Redistribution Enterprise may include one; ask, and
+  it will be stated in the certificate.
 - **Governing law.** Italian law, courts of Milan, unless the certificate names otherwise.
 
 ---
 
-## 8. What is *not* included
+## 10. What is *not* included
 
 Stated plainly, so nobody discovers it after paying:
 
 - **No SLA on the software itself.** Response targets are commitments about replying to
   you, not about fixing anything within a window.
-- **No custom development.** Quoted separately — see §5.
+- **No custom development.** Quoted separately — see §7.
 - **No guarantee of future features.** The roadmap is not a contract.
 - **No exclusivity.** The same licence is available to your competitors.
-- **No rights to third-party components.** See §9.
+- **No rights to third-party components.** See §11.
 - **No hosted service.** Proteus is a desktop application and a command line. There is nothing to sign into.
+- **No implied redistribution rights on a Commercial licence**, and no implied group-wide
+  scope without an explicit Enterprise perimeter. See §3.
 
 ---
 
-## 9. Third-party components
+## 11. Third-party components
 
 A commercial licence covers Proteus's own code. Its dependencies are separately licensed and
 a commercial licence cannot and does not relicense them.
@@ -241,7 +371,7 @@ as at the version of this document, and are not a legal opinion.
 
 ---
 
-## 10. Contributors
+## 12. Contributors
 
 Contributions are accepted under the [Contributor License Agreement](CLA.md), which grants
 the Project Owner the right to license contributed code under both AGPL-3.0 and commercial
@@ -253,7 +383,7 @@ commercial licence to Proteus for their own use, as thanks.
 
 ---
 
-## 11. Contact
+## 13. Contact
 
 **Commercial licensing, quotes and support for paying customers:
 [marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20commercial%20licence%20enquiry)**
@@ -261,6 +391,22 @@ commercial licence to Proteus for their own use, as thanks.
 For anything that is *not* a purchase — a bug, a feature request, a question about which
 row of §1 you fall into — the [issue tracker](https://github.com/MarcoLombardoDev/Proteus/issues) is the better channel, and the
 answer helps whoever asks next.
+
+---
+
+## 14. Terminology
+
+This document uses **Community**, **Commercial** and **Redistribution** as the three
+licence families. **OEM** is deliberately not used as a top-level category: it appears only
+as an example, because it describes one *scenario* within Redistribution, not a distinct
+set of rights —
+
+> OEM, embedded and other redistribution scenarios are covered by the Redistribution
+> Licence.
+
+Naming it this way keeps the category general enough to apply to whichever commercial
+model a redistributor actually uses, instead of forcing OEM deals through a differently
+worded licence than an equivalent embedding or hosting deal.
 
 ---
 

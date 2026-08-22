@@ -1059,30 +1059,38 @@ The dividing line is one rule: **AGPL-3.0 is free as long as the source stays op
 
 ### Commercial Licensing
 
-The commercial licence removes the copyleft obligation, and nothing else. It is for
-organisations embedding Proteus in a proprietary product, running a modified version as a
-service without publishing the source, reselling it under their own terms — or simply
-barred by internal policy from using AGPL code.
+Three licence families, not one price list: **Commercial** removes the copyleft
+obligation for closed-source *internal* use, sized by employee count. **Redistribution**
+is a separate licence for shipping Proteus (or a derivative) to third parties — embedded,
+OEM'd, resold, or run as a service for your customers. Barred by internal policy from using
+AGPL code at all? That's Commercial too.
 
 | Tier | Price | Scope |
 |---|---:|---|
 | **Community** | **Free** | Everything Proteus does, under AGPL-3.0. Unlimited internal use. |
-| **Internal** | **€500 / year** | Closed-source internal use, one legal entity. No redistribution. |
-| **OEM / Redistribution** | **€1,900 / year** | Embed it in a product you sell, or run it as a hosted service. |
-| **Enterprise** | **from €2,900 / year** | Group-wide, unlimited products, procurement and legal questionnaires answered. |
-| **Perpetual** | **€1,500** / **from €7,000** one-off | Internal or OEM scope, bought once, for the major version current at purchase. |
+| **Commercial — Small** | **€500 / year** | 1–49 employees. Closed-source internal use, one legal entity. |
+| **Commercial — Medium** | **€1,000 / year** | 50–249 employees. Same model as Small. |
+| **Commercial — Large** | **€1,800 / year** | 250–999 employees. Same model as Small and Medium. |
+| **Commercial — Enterprise** | **from €2,900 / year** | 1,000+ employees, or an explicitly agreed group-wide perimeter. |
+| **Redistribution — Standard** | **€1,900 / year** | Embed it in a product you sell, or run it as a hosted service for your customers. |
+| **Redistribution — Enterprise** | **from €7,000 / year** | Large-scale redistribution: worldwide, high-volume, large OEM programmes. |
 
 The same commitments apply at every paid tier:
 
-- **Email support is always included** — 5 business days at Internal, 3 at OEM, 2 at
-  Enterprise. It is never sold separately to a paying customer.
+- **Email support is always included** — 5 business days at Commercial Small/Medium, 3 at
+  Commercial Large and Redistribution Standard, 2 at Commercial Enterprise and
+  Redistribution Enterprise. It is never sold separately to a paying customer.
 - **Custom development is never included**, at any tier. It is available on request and
   **quoted separately**, per project, at a fixed price agreed before work starts
   (indicative day rate: **€450 / day**).
-- **Perpetual fallback, no retroactive price rise, cancel any time.** Versions released
-  during your term stay licensed to you forever.
-- **50% off** for organisations under 10 employees and €1M revenue. **Free** commercial
-  licences for non-profits, academia and published research — ask.
+- **No retroactive price rise, cancel any time.** No notice period, no auto-renewal trap.
+- **50% off** any Commercial tier for organisations under 10 employees and €1M revenue.
+  **Free** commercial licences for non-profits, academia and published research — ask.
+
+A group-wide perimeter, or a large-scale redistribution deal, is never implied by
+belonging to a group or embedding the software once — it is explicitly agreed and named in
+the certificate. See §§2–4 of the full terms for exactly what each tier does and does not
+include.
 
 Prices are per organisation, excluding VAT. **Seats are never counted.** Full terms, what is
 *not* included, and the third-party component review:

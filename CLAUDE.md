@@ -118,7 +118,7 @@ write`, since some orgs default `GITHUB_TOKEN` to read-only.
   `xvfb-run -a python docs/generate_screenshots.py`. The terminal capture runs
   the real CLI and draws its actual output, so it cannot go stale silently.
 
-## The offer is shared with two sibling products
+## The offer is shared with two sibling products — currently out of sync
 
 Proteus is one of three dual-licensed products — with **Iris** (email sender) and
 **Argus** (market forecasting) — that deliberately sell on **the same commercial
@@ -126,23 +126,45 @@ offer**, differing only in price, scope wording and the third-party review.
 Restructuring the offer here means restructuring it in all three, or the alignment
 is silently lost.
 
-What must stay identical across the three:
+**As of the Small/Medium/Large/Enterprise restructuring below, Proteus and its
+siblings are temporarily out of alignment.** Iris and Argus still use the old
+ladder (Community / Internal / OEM & Redistribution / Enterprise, plus a perpetual
+option on Internal or OEM scope). Proteus dropped the perpetual option entirely.
+Migrating Iris and Argus to the structure below — keeping the monotonic ladder,
+Proteus < Iris < Argus, at each corresponding tier — is outstanding work, not a
+decision to leave as-is.
 
-- **`COMMERCIAL-LICENSE.md`, the same eleven sections**, and the same tier ladder:
-  Community / Internal / OEM & Redistribution / Enterprise, plus a perpetual option
-  on Internal or OEM scope.
+`COMMERCIAL-LICENSE.md`'s tier ladder is now three licence families, not a flat
+list of four tiers:
+
+- **Community** — AGPL-3.0, free, unlimited internal use.
+- **Commercial** — closed-source *internal* use only, sized by employee count:
+  **Small** (1–49), **Medium** (50–249), **Large** (250–999), **Enterprise**
+  (1,000+ or an explicitly-scoped Corporate Group).
+- **Redistribution** — a distinct licence for shipping the software to third
+  parties (embedded, OEM'd, resold, hosted for customers), in two tiers:
+  **Standard** and **Enterprise**. Not sized by employee count — see the
+  Redistribution — Enterprise section of the licence for what it's sized by
+  instead.
+
+What must stay identical across the three products, adjusted for the new shape:
+
+- **`COMMERCIAL-LICENSE.md`, the same section structure** (currently fourteen
+  sections in Proteus — see the file for the exact list), and the same tier
+  families and sub-tiers described above.
 - **Email is the only commercial channel.** GitHub Issues are for bugs and features.
-- **Email support is included at every paid tier** (5 / 3 / 2 business days), never
-  sold separately to a paying customer.
+- **Email support is included at every paid tier**, using only 5 / 3 / 2 business
+  days as the three response targets, distributed across the six paid tiers (see
+  §6 of the licence for exactly which tier gets which).
 - **Custom development is never included**, at any tier, and is always quoted
   separately per project at a fixed price agreed before work starts.
-- Perpetual fallback, no retroactive price rise, cancel any time, **no licence key
-  and no phone-home**, 50% discount under 10 employees and €1M revenue, free
-  licences for non-profits, academia and published research.
+- No retroactive price rise, cancel any time, **no licence key and no
+  phone-home**, 50% discount under 10 employees and €1M revenue (Commercial tiers
+  only) — free licences for non-profits, academia and published research.
 
 Proteus is the entry point of the range, and the ladder is deliberately monotonic:
 **Proteus < Iris < Argus on every row.** Move a price here and check the other two
-still line up.
+still line up — once they have been migrated to this same tier structure.
 
 Underneath all of it: **the free AGPL build is the whole product.** No paid edition,
 no feature gate, no seat limit. A commercial licence buys *permission*, not

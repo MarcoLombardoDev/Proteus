@@ -59,10 +59,12 @@ def test_every_capture_the_generator_produces_is_shown():
 # Licensing
 # ---------------------------------------------------------------------------
 
-#: Tiers that must exist under the same name in both documents. The perpetual
-#: options are deliberately absent: the README collapses the two scopes onto a
-#: single row, so their figures are checked below by amount instead of by name.
-TIERS = ("Community", "Internal", "OEM", "Enterprise")
+#: Tiers that must exist under the same name in both documents. Commercial and
+#: Redistribution each cover several sub-tiers (Small/Medium/Large/Enterprise,
+#: Standard/Enterprise) that the README does not necessarily spell out row by
+#: row, so matching is done at the licence-family level; their figures are
+#: checked below by amount instead of by sub-tier name.
+TIERS = ("Community", "Commercial", "Redistribution")
 
 
 def section(text: str, heading: str, stop: str) -> str:
@@ -104,8 +106,8 @@ def test_the_price_list_agrees_with_itself():
     # The README's licensing section summarises the whole offer, so it is
     # compared against both places the licence quotes a figure: the price list
     # and the custom-development day rate.
-    licence = (amounts(section(terms, "## 3. Price list", "## 4."))
-               | amounts(section(terms, "## 5. Custom development", "## 6.")))
+    licence = (amounts(section(terms, "## 5. Price list", "## 6."))
+               | amounts(section(terms, "## 7. Custom development", "## 8.")))
     readme = amounts(section(read("README.md"),
                              "### Commercial Licensing", "### Contributing"))
 
@@ -115,7 +117,7 @@ def test_the_price_list_agrees_with_itself():
 
 def test_every_tier_is_named_in_both_documents():
     """A tier the README never mentions is a tier nobody will ask about."""
-    licence = tier_rows(section(read("COMMERCIAL-LICENSE.md"), "## 3. Price list", "## 4."))
+    licence = tier_rows(section(read("COMMERCIAL-LICENSE.md"), "## 5. Price list", "## 6."))
     readme = tier_rows(section(read("README.md"), "### Commercial Licensing", "### Contributing"))
 
     assert set(licence) == set(TIERS), f"tiers missing from the licence: {sorted(licence)}"
@@ -128,7 +130,7 @@ def test_the_free_tier_stays_free():
     must cost nothing, in both documents, in words a reader cannot misread.
     """
     for document, heading, stop in (
-            ("COMMERCIAL-LICENSE.md", "## 3. Price list", "## 4."),
+            ("COMMERCIAL-LICENSE.md", "## 5. Price list", "## 6."),
             ("README.md", "### Commercial Licensing", "### Contributing")):
         row = tier_rows(section(read(document), heading, stop))["Community"]
         assert re.search(r"\*\*(Free|€0)\*\*", row), f"{document}: {row.strip()}"
