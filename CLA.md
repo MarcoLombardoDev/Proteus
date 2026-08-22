@@ -9,7 +9,7 @@ This Contributor License Agreement ("Agreement") documents the rights granted by
 
 By submitting a Pull Request, filing an Issue with a proposed fix, or otherwise contributing code, documentation, translations, or other materials to this repository, **you agree to the terms of this Agreement**.
 
-> **How to agree:** Simply submit a Pull Request. Your first PR submission constitutes your agreement to this CLA. The PR description should include the statement: `I have read and agree to the Contributor License Agreement.`
+> **How to agree:** Simply submit a Pull Request. Your first PR submission constitutes your agreement to this CLA. The PR description should include the statement: `I have read and agree to the Contributor License Agreement (CLA.md).`
 
 ---
 
@@ -68,6 +68,8 @@ You explicitly acknowledge and agree that:
 2. The Project Owner **reserves the exclusive right** to offer the Project (including Your Contributions) under **alternative commercial, proprietary, or closed-source license agreements** to any third party, for a fee or otherwise, without any obligation to notify you, pay royalties, or seek further consent.
 3. This dual-licensing right is an essential basis of this Agreement. The Project Owner would not accept Contributions without this right.
 4. You will not receive any compensation, royalties, or revenue share from commercial licensing arrangements.
+
+In return, contributors receive a perpetual, royalty-free commercial licence to Proteus for their own use — see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md), §12.
 
 ---
 

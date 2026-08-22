@@ -1,28 +1,17 @@
-# 🖼️ Proteus - Rebranding Tool
+# 🖼️ Proteus — Rebranding Tool
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial Licence Available](https://img.shields.io/badge/Commercial%20Licence-Available-green.svg)](COMMERCIAL-LICENSE.md)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/MarcoLombardoDev/Proteus/actions/workflows/ci.yml/badge.svg)](https://github.com/MarcoLombardoDev/Proteus/actions/workflows/ci.yml)
 
-> **Proteus** — named after the shape-shifting sea god — is a rebranding tool: it changes
-> what your files look like without changing where they are.
-
-Proteus is a Python desktop application built for one job: **carrying a corporate
-rebranding through an organisation's files.** A merger, a name change, a brand refresh —
-whatever the trigger, the old logo is suddenly wrong in thousands of places at once, and
-somebody has to find and replace every copy of it.
-
-You point it at a folder of new logos and a folder to scan; it finds the files carrying the
-old logo — by name, by visual similarity, and inside Office documents and PDFs — pairs each
-one with the most suitable replacement, shows you a before/after preview of every pairing,
-and then overwrites them **atomically, with recoverable backups**.
-
-It exists because doing this by hand across hundreds of files is slow and, worse, silently
-error-prone: it is very easy to drop a 1920×600 banner where a 32×32 favicon belonged.
+Named after the shape-shifting sea god, Proteus is a rebranding tool: it changes what your
+files look like without changing where they are.
 
 > 🌍 The interface is available in **English** (default) and **Italian**, switchable at
 > runtime from the configuration tab.
+> 💼 Commercial or redistribution use (including OEM)? See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md),
+> or write to [marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20commercial%20licence%20enquiry).
 
 ---
 
@@ -72,33 +61,40 @@ UI change with `xvfb-run -a python docs/generate_screenshots.py`.</sub>
 
 ## Table of Contents
 
-1. [Why this tool](#why-this-tool)
-2. [The use case: a corporate rebranding](#the-use-case-a-corporate-rebranding)
-3. [Features](#features)
-4. [Installation](#installation)
+1. [What Proteus is](#what-proteus-is)
+2. [Features](#features)
+3. [Download](#download)
+4. [Installation from source](#installation-from-source)
 5. [Usage](#usage)
-6. [Search patterns](#search-patterns)
-7. [Content search](#content-search)
-8. [Office documents](#office-documents)
-9. [PDF files](#pdf-files)
-10. [Nothing is skipped in silence](#nothing-is-skipped-in-silence)
-11. [Command line and unattended runs](#command-line-and-unattended-runs)
-12. [Matching algorithm](#matching-algorithm)
-13. [Safety model](#safety-model)
-14. [Backup and restore](#backup-and-restore)
-15. [CSV reports](#csv-reports)
-16. [Languages](#languages)
-17. [Files and folders](#files-and-folders)
-18. [Building a standalone executable](#building-a-standalone-executable)
-19. [Development](#development)
-20. [Requirements](#requirements)
-21. [Scope and limitations](#scope-and-limitations)
-22. [License & Commercial Licensing](#license--commercial-licensing)
-23. [Disclaimer](#disclaimer)
+6. [How it works](#how-it-works)
+7. [Requirements](#requirements)
+8. [Development](#development)
+9. [Testing](#testing)
+10. [Building a standalone executable](#building-a-standalone-executable)
+11. [Troubleshooting](#troubleshooting)
+12. [Scope and limitations](#scope-and-limitations)
+13. [License & Commercial Licensing](#license--commercial-licensing)
+14. [Contributing](#contributing)
+15. [Disclaimer](#disclaimer)
 
 ---
 
-## Why this tool
+## What Proteus is
+
+Proteus is a Python desktop application built for one job: **carrying a corporate
+rebranding through an organisation's files.** A merger, a name change, a brand refresh —
+whatever the trigger, the old logo is suddenly wrong in thousands of places at once, and
+somebody has to find and replace every copy of it.
+
+You point it at a folder of new logos and a folder to scan; it finds the files carrying
+the old logo — by name, by visual similarity, and inside Office documents and PDFs — pairs
+each one with the most suitable replacement, shows you a before/after preview of every
+pairing, and then overwrites them **atomically, with recoverable backups**.
+
+It exists because doing this by hand across hundreds of files is slow and, worse, silently
+error-prone: it is very easy to drop a 1920×600 banner where a 32×32 favicon belonged.
+
+### Why this tool
 
 A rebranding exercise is rarely one file. The same logo lives in a dozen resolutions
 across a website, an intranet, print templates and legacy folders — `logo_header.png`,
@@ -116,9 +112,200 @@ branch-office shares — the [command line](#command-line-and-unattended-runs) r
 supervision with explicit rules rather than dropping it: still a dry run by default, and it
 refuses to write when a match is not certain.
 
----
+## Features
 
-## The use case: a corporate rebranding
+**Finding**
+- **Content search**: find the old logo by what it *looks like*, not by what it is
+  called — the half of a rebranding that wildcards cannot solve
+- **Inside Office documents**: pictures embedded in `.docx`, `.pptx` and `.xlsx` are found
+  and replaced like any other file — which is where most logos actually live
+- **Inside PDF files**: raster images in a PDF are found, compared and replaced too. A
+  logo drawn as vector artwork cannot be swapped — and is **reported**, not ignored
+- Recursive search with wildcard patterns; multiple patterns at once (`logo*.png; logo*.svg`)
+- Case-insensitive matching, symlink/junction cycle protection, per-folder error reporting
+  so an unreadable network share does not abort the whole scan
+- Automatically skips its own `.bak` files, and skips the source folder when it happens to
+  sit inside the folder being scanned
+
+**Pairing**
+- Same-format constraint, with `.jpg`/`.jpeg` and `.tif`/`.tiff` treated as equivalent
+- Closest-resolution selection, normalised so the gap is judged *relative* to the target size
+- File-name similarity as a tie-break between equally-sized candidates
+- SVG dimensions read from the markup (`width`/`height`, falling back to `viewBox`)
+- A **quality grade** per pairing — Excellent / Good / Weak / Manual — with weak matches
+  highlighted for review
+- Manual override: double-click any row to pick a different source file
+
+**Replacing**
+- **Atomic writes**: the copy lands on a temporary file and is promoted with `os.replace`,
+  so a failure halfway through never truncates the original
+- **Non-clobbering backups**: a second rebranding campaign does not overwrite the first
+  campaign's `.bak`
+- **Dry run** that performs every check and produces the full log without touching a file
+- **One-click restore** from the backups, always reverting to the pre-rebranding original
+- Cancellable at any point, with visible progress — designed for slow network shares
+- **Nothing is skipped in silence**: any file that may carry the logo but cannot be
+  handled is listed with the reason and a suggested remedy, so you can finish it by hand
+
+**Automating**
+- A **command line** covering everything the interface does, so the same campaign can run
+  as a scheduled task, a cron job or a pipeline step
+- **Unattended by design**: a run writes nothing unless asked, refuses on uncertain matches,
+  and returns an exit code the scheduler can act on
+
+**Reporting**
+- CSV export of the proposed matches and of the replacement outcome
+- Rotating log files, with a fallback location when the application folder is read-only
+- A permanent licence notice in the window footer, satisfying the "Appropriate Legal
+  Notices" requirement of AGPL-3.0 section 5 — with the licensing address spelled out and
+  clickable, since the person running the tool is the one who might need to buy a licence
+
+## Download
+
+Standalone builds for **Windows, macOS and Linux** are attached to every
+[release](https://github.com/MarcoLombardoDev/Proteus/releases):
+
+| Platform | File |
+|---|---|
+| Windows (x64) | `Proteus-<version>-windows-x64.zip` |
+| macOS (Apple silicon) | `Proteus-<version>-macos-arm64.zip` |
+| Linux (x64) | `Proteus-<version>-linux-x64.tar.gz` |
+
+Each archive is built on that platform's own runner — PyInstaller does not
+cross-compile, so nothing here is emulated or claimed for a platform that was not actually
+built. Unpack and run: no installation, and no Python needed.
+
+One executable, two ways to use it:
+
+```
+Proteus                    opens the interface
+Proteus --help             the command line, for scripts and scheduled jobs
+```
+
+The builds are **unsigned**, so Windows SmartScreen and macOS Gatekeeper warn on first
+launch.
+
+## Installation from source
+
+### Prerequisites
+
+- **Python 3.10 or newer**, including `tkinter`
+  - Windows: keep the *tcl/tk and IDLE* option selected in the Python installer
+  - Debian/Ubuntu: `sudo apt install python3-tk`
+  - Fedora: `sudo dnf install python3-tkinter`
+  - macOS (Homebrew): `brew install python-tk`
+
+### Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+On Windows you can instead double-click **`install_dependencies.bat`**, which also verifies
+that `tkinter` is present before installing anything.
+
+### Run
+
+```bash
+python main.py
+```
+
+| Platform | Shortcut |
+|---|---|
+| Windows | `run.bat` |
+| Linux / macOS | `./run.sh` |
+
+Any argument switches to the [command line](#command-line-and-unattended-runs) instead:
+
+```bash
+python main.py --help
+```
+
+## Usage
+
+The application walks you through four tabs, in order.
+
+### ① Configuration
+
+| Field | Meaning |
+|---|---|
+| **Source folder** | Where the *new* logos live. Every supported image file in it becomes a replacement candidate. |
+| **Folder to scan** | The tree to search for files to replace. Scanned recursively. |
+| **Search by** | *File name* (wildcard pattern) or *Image content* (visual similarity). |
+| **Search key** | Wildcard pattern for the file names to replace, e.g. `logo*.png`. In content mode it is an optional pre-filter. |
+| **Reference images** | Content mode only: one or more copies of the *old* logo to search for. |
+| **Minimum similarity** | Content mode only: how close a match must be to count. Defaults to 90%. |
+| **Language** | English or Italian, applied immediately. |
+
+The tool refuses to start when the two folders are the same, and warns you when the source
+folder is nested inside the scanned one (in which case it is excluded from the search
+automatically, so your new logos are never treated as targets).
+
+### ② Scan results
+
+Every matching file with its format, weight, resolution and — after a content search —
+its similarity to the reference. Rows below the confident threshold are orange. Select a
+row to preview it;
+double-click to open its containing folder. Columns are sortable, and sorting is
+type-aware — `2.0 MB` ranks above `900 KB`, and `10` after `2`.
+
+### ③ Matches
+
+The heart of the tool. Each target file is shown next to its proposed replacement, with
+both resolutions, a quality grade and a side-by-side preview.
+
+- **Click the ✓ column** (or press <kbd>Space</kbd>) to include or exclude a row
+- **Double-click a row** to choose a different source file, ordered by suitability
+- **Colours**: green = included, grey = excluded, red = no match found,
+  orange = weak match worth a look
+
+Rows with no match are excluded automatically; you cannot accidentally replace a file with
+nothing.
+
+### ④ Replacement
+
+A summary of exactly what is about to happen, two safety switches, and a live log.
+
+| Option | Effect |
+|---|---|
+| **Backup** | Copies each original to `.bak` before overwriting. Enabled by default. |
+| **Dry run** | Runs every check and produces the full log, writing nothing. |
+
+After a real run you are offered a CSV report of the outcome.
+
+### Search patterns
+
+| Pattern | Matches |
+|---|---|
+| `logo*.png` | Every PNG whose name starts with `logo` |
+| `banner_*.jpg` | Every JPG starting with `banner_` |
+| `*.svg` | Every SVG file |
+| `icon_??.png` | `icon_` followed by exactly two characters, `.png` |
+| `logo*.png; logo*.svg` | Several patterns at once, separated by `;` |
+
+Matching is case-insensitive, so `logo*.png` also finds `LOGO_Header.PNG`.
+
+Patterns that would select *every* file (`*`, `?`, or only wildcards) are rejected, as are
+patterns containing a path separator — the pattern applies to file names, not paths.
+
+### Languages
+
+English is the default and the source language of every message. Italian is fully
+translated. The choice is persisted and applied immediately — the interface is rebuilt in
+place, keeping your scan results, your pairings and your log.
+
+Adding a language means adding one dictionary to `CATALOGUES` in
+[`i18n.py`](i18n.py). Anything you do not translate falls back to English rather than
+showing a placeholder. Three tests keep the catalogues honest:
+
+- every string passed through `t()` has an entry,
+- no entry is stale,
+- `{placeholders}` are preserved across languages (a dropped one would raise in front of
+  the user).
+
+## How it works
+
+### The use case: a corporate rebranding
 
 This is what Proteus was built for, and what its defaults assume.
 
@@ -145,7 +332,7 @@ Three things make this genuinely hard, and each maps to a feature:
    → [Nothing is skipped in silence](#nothing-is-skipped-in-silence): they are listed with
    a remedy so somebody can finish them by hand.
 
-### A campaign, start to finish
+#### A campaign, start to finish
 
 The order below is the one the tool is designed around, and each step is safe to stop at.
 
@@ -208,7 +395,7 @@ what changed.
 first campaign, per folder. Always keep an independent backup as well: see the
 [Disclaimer](#disclaimer).
 
-### What it does not do
+#### What it does not do
 
 Worth knowing before it is presented to anyone as a complete solution:
 
@@ -221,168 +408,7 @@ Worth knowing before it is presented to anyone as a complete solution:
   or text inside the markup are not edited.
 - Vector logos in PDFs cannot be replaced; see [PDF files](#pdf-files).
 
----
-
-## Features
-
-**Finding**
-- **Content search**: find the old logo by what it *looks like*, not by what it is
-  called — the half of a rebranding that wildcards cannot solve
-- **Inside Office documents**: pictures embedded in `.docx`, `.pptx` and `.xlsx` are found
-  and replaced like any other file — which is where most logos actually live
-- **Inside PDF files**: raster images in a PDF are found, compared and replaced too. A
-  logo drawn as vector artwork cannot be swapped — and is **reported**, not ignored
-- Recursive search with wildcard patterns; multiple patterns at once (`logo*.png; logo*.svg`)
-- Case-insensitive matching, symlink/junction cycle protection, per-folder error reporting
-  so an unreadable network share does not abort the whole scan
-- Automatically skips its own `.bak` files, and skips the source folder when it happens to
-  sit inside the folder being scanned
-
-**Pairing**
-- Same-format constraint, with `.jpg`/`.jpeg` and `.tif`/`.tiff` treated as equivalent
-- Closest-resolution selection, normalised so the gap is judged *relative* to the target size
-- File-name similarity as a tie-break between equally-sized candidates
-- SVG dimensions read from the markup (`width`/`height`, falling back to `viewBox`)
-- A **quality grade** per pairing — Excellent / Good / Weak / Manual — with weak matches
-  highlighted for review
-- Manual override: double-click any row to pick a different source file
-
-**Replacing**
-- **Atomic writes**: the copy lands on a temporary file and is promoted with `os.replace`,
-  so a failure halfway through never truncates the original
-- **Non-clobbering backups**: a second rebranding campaign does not overwrite the first
-  campaign's `.bak`
-- **Dry run** that performs every check and produces the full log without touching a file
-- **One-click restore** from the backups, always reverting to the pre-rebranding original
-- Cancellable at any point, with visible progress — designed for slow network shares
-- **Nothing is skipped in silence**: any file that may carry the logo but cannot be
-  handled is listed with the reason and a suggested remedy, so you can finish it by hand
-
-**Automating**
-- A **command line** covering everything the interface does, so the same campaign can run
-  as a scheduled task, a cron job or a pipeline step
-- **Unattended by design**: a run writes nothing unless asked, refuses on uncertain matches,
-  and returns an exit code the scheduler can act on
-
-**Reporting**
-- CSV export of the proposed matches and of the replacement outcome
-- Rotating log files, with a fallback location when the application folder is read-only
-- A permanent licence notice in the window footer, satisfying the "Appropriate Legal
-  Notices" requirement of AGPL-3.0 section 5 — with the licensing address spelled out and
-  clickable, since the person running the tool is the one who might need to buy a licence
-
----
-
-## Installation
-
-### Prerequisites
-
-- **Python 3.10 or newer**, including `tkinter`
-  - Windows: keep the *tcl/tk and IDLE* option selected in the Python installer
-  - Debian/Ubuntu: `sudo apt install python3-tk`
-  - Fedora: `sudo dnf install python3-tkinter`
-  - macOS (Homebrew): `brew install python-tk`
-
-### Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-On Windows you can instead double-click **`install_dependencies.bat`**, which also verifies
-that `tkinter` is present before installing anything.
-
-### Run
-
-```bash
-python main.py
-```
-
-| Platform | Shortcut |
-|---|---|
-| Windows | `run.bat` |
-| Linux / macOS | `./run.sh` |
-
-Any argument switches to the [command line](#command-line-and-unattended-runs) instead:
-
-```bash
-python main.py --help
-```
-
----
-
-## Usage
-
-The application walks you through four tabs, in order.
-
-### ① Configuration
-
-| Field | Meaning |
-|---|---|
-| **Source folder** | Where the *new* logos live. Every supported image file in it becomes a replacement candidate. |
-| **Folder to scan** | The tree to search for files to replace. Scanned recursively. |
-| **Search by** | *File name* (wildcard pattern) or *Image content* (visual similarity). |
-| **Search key** | Wildcard pattern for the file names to replace, e.g. `logo*.png`. In content mode it is an optional pre-filter. |
-| **Reference images** | Content mode only: one or more copies of the *old* logo to search for. |
-| **Minimum similarity** | Content mode only: how close a match must be to count. Defaults to 90%. |
-| **Language** | English or Italian, applied immediately. |
-
-The tool refuses to start when the two folders are the same, and warns you when the source
-folder is nested inside the scanned one (in which case it is excluded from the search
-automatically, so your new logos are never treated as targets).
-
-### ② Scan results
-
-Every matching file with its format, weight, resolution and — after a content search —
-its similarity to the reference. Rows below the confident threshold are orange. Select a
-row to preview it;
-double-click to open its containing folder. Columns are sortable, and sorting is
-type-aware — `2.0 MB` ranks above `900 KB`, and `10` after `2`.
-
-### ③ Matches
-
-The heart of the tool. Each target file is shown next to its proposed replacement, with
-both resolutions, a quality grade and a side-by-side preview.
-
-- **Click the ✓ column** (or press <kbd>Space</kbd>) to include or exclude a row
-- **Double-click a row** to choose a different source file, ordered by suitability
-- **Colours**: green = included, grey = excluded, red = no match found,
-  orange = weak match worth a look
-
-Rows with no match are excluded automatically; you cannot accidentally replace a file with
-nothing.
-
-### ④ Replacement
-
-A summary of exactly what is about to happen, two safety switches, and a live log.
-
-| Option | Effect |
-|---|---|
-| **Backup** | Copies each original to `.bak` before overwriting. Enabled by default. |
-| **Dry run** | Runs every check and produces the full log, writing nothing. |
-
-After a real run you are offered a CSV report of the outcome.
-
----
-
-## Search patterns
-
-| Pattern | Matches |
-|---|---|
-| `logo*.png` | Every PNG whose name starts with `logo` |
-| `banner_*.jpg` | Every JPG starting with `banner_` |
-| `*.svg` | Every SVG file |
-| `icon_??.png` | `icon_` followed by exactly two characters, `.png` |
-| `logo*.png; logo*.svg` | Several patterns at once, separated by `;` |
-
-Matching is case-insensitive, so `logo*.png` also finds `LOGO_Header.PNG`.
-
-Patterns that would select *every* file (`*`, `?`, or only wildcards) are rejected, as are
-patterns containing a path separator — the pattern applies to file names, not paths.
-
----
-
-## Content search
+### Content search
 
 Wildcards solve the easy half of a rebranding. The hard half is the logo filed as
 `header_bg.png`, `img_04.jpg`, or something in a folder named after a project from 2014.
@@ -391,7 +417,7 @@ No pattern finds those, because nobody named them after the brand.
 Switch **Search by** to *Image content*, point Proteus at one or more copies of the **old
 logo**, and it finds every image that looks like them — whatever the file is called.
 
-### How it works
+#### How it works
 
 Each image is reduced to a 9×8 greyscale grid and encoded as a 64-bit **difference hash**:
 each pixel becomes one bit saying whether it is brighter than its right-hand neighbour.
@@ -403,7 +429,7 @@ three things that happen to a logo as it travels around an organisation: **resca
 first, so the same mark exported once with an alpha channel and once without still reads
 as itself.
 
-### What it will and will not find
+#### What it will and will not find
 
 | | |
 |---|---|
@@ -417,7 +443,7 @@ as itself.
 | Logo composited into a larger picture | ❌ only whole images are compared |
 | SVG, PDF, EPS, EMF/WMF | ❌ nothing to rasterise; use a pattern for those |
 
-### Colour is not what it discriminates on
+#### Colour is not what it discriminates on
 
 A difference hash reads **luminance gradients**, and the *shape* is what creates them.
 The same silhouette in another colour therefore still matches — measured at 100% for a
@@ -431,7 +457,7 @@ layout — the same test set drops to 70% for a genuinely different picture.
 This is the reason the threshold is strict and every hit is previewed before anything is
 written.
 
-### Why the threshold is strict
+#### Why the threshold is strict
 
 **Minimum similarity** defaults to 90%, and that default is deliberate. Proteus overwrites
 files: a false positive here does not produce a wrong row in a list, it destroys an
@@ -442,295 +468,7 @@ the rows a human actually needs to look at. The similarity of every hit is shown
 column and is sortable, and the pattern field still works as a pre-filter to narrow the
 search before any image is decoded.
 
----
-
-## Office documents
-
-In a real rebranding most of the logos are not loose PNGs on a share — they are inside
-reports, decks and spreadsheet templates. Tick **Also look inside Office documents** and
-Proteus treats a picture embedded in a `.docx` the same as one sitting on disk: it appears
-in the results, gets a preview and a match, and is replaced with a backup.
-
-Modern Office files are ZIP packages, and every picture in them is stored as an ordinary
-image file under a `media/` folder inside. Proteus reads and rewrites them with the
-standard library alone — there is no new dependency, and no Office installation is needed.
-
-Supported: `.docx` `.docm` `.dotx` `.dotm` `.pptx` `.pptm` `.potx` `.potm` `.ppsx`
-`.xlsx` `.xlsm` `.xltx` `.xltm`.
-
-### One picture, every occurrence
-
-Office stores a picture **once** however many times it appears. A logo used in the body
-*and* in the page header is a single file inside the package, so one replacement fixes
-both — and the document is backed up **once**, no matter how many of its pictures change.
-That matters: replacing three logos one at a time would otherwise leave three backups of
-successive states and no clean copy of the original.
-
-### The frame does not follow the picture
-
-This is the way a bulk replacement can quietly ruin a thousand documents.
-
-The size and position of a picture are stored in the **document**, not in the image. A
-shape laid out at 3.33 × 1.11 inches stays 3.33 × 1.11 inches after the image inside it is
-swapped. Drop a square logo into a frame built for a 3:1 one and Word stretches it to fit.
-Nothing errors; the deck just looks wrong, and nobody notices until it is printed.
-
-Proteus compares the aspect ratio of the old picture with the new one and **flags the
-replacement in orange**, listing the count in the operation summary before you commit.
-The old picture's own ratio is used as a proxy for the frame, since the frame was almost
-certainly sized to it when the image was first inserted.
-
-### Not handled
-
-- **`.doc`, `.ppt`, `.xls`** — the pre-2007 binary formats are OLE compound files, not ZIP
-  packages.
-- **EMF/WMF metafiles**, which Office produces when a logo is *pasted* rather than
-  inserted. They cannot be rasterised by Pillow, so they could be neither previewed nor
-  compared — only swapped blindly, which is worse than not touching them. **They are
-  reported**, with the remedy: delete the pasted picture and re-insert it with
-  *Insert > Pictures*. Pasting is how most logos get into a corporate document, so this is
-  the finding you are most likely to see.
-- **Password-protected or damaged packages** are reported too, and the two are
-  distinguished: a protected `.docx` is an OLE compound file rather than a ZIP, so calling
-  it "damaged" would send you looking for the wrong problem.
-- Logos drawn with native Office shapes, or composited into a larger picture.
-
----
-
-## PDF files
-
-Tick **Also look inside PDF files** (or pass `--pdf`) and Proteus reads the raster images
-a PDF contains, compares them like any other file, and writes the new logo back into the
-document.
-
-### How a PDF stores a picture
-
-Every bitmap a PDF shows is an *image XObject*: a stream of encoded pixels plus a
-dictionary giving its width, height, colour space and compression. The page's content
-stream then paints it through a transformation matrix. Replacing a logo means swapping the
-stream and its dictionary while leaving the reference — and the matrix — untouched.
-
-Proteus uses [**pypdf**](https://pypi.org/project/pypdf/) for this, and specifically its
-own `ImageFile.replace()`, which re-encodes the picture and fixes `/Width`, `/Height`,
-`/ColorSpace`, `/BitsPerComponent` and `/Length` together. Editing the bytes directly does
-work — it was measured before this was built — but it means rebuilding the cross-reference
-table by hand, and it goes blind as soon as a producer uses object streams, which modern
-writers do. On a tool that overwrites files in place, that is not a trade worth making.
-
-### Any format may replace any picture
-
-Unlike an Office package, where the media file's extension is part of a content-type
-contract, a PDF image is re-encoded from pixels on the way in. The **same-format rule is
-therefore lifted for PDF rows**: a PNG can replace a JPEG-compressed logo, which is the
-normal case — brand assets arrive as PNG, and PDFs store them as JPEG.
-
-### One picture, one entry
-
-Rows appear as `brochure.pdf!/p2i1` — "the first image painted on page 2 of
-brochure.pdf". Position is used rather than the PDF object number because
-`PdfWriter(clone_from=…)` renumbers objects: an image read as object 1 comes back as
-object 4, so a number captured during the scan cannot find the picture again at write
-time. Before writing, Proteus checks the picture at that position still has the size the
-scan measured, and refuses if it does not — the document changed, and what is there now
-was never reviewed.
-
-Several pictures in the same PDF are replaced in **one rewrite and one backup**, exactly as
-for Office documents.
-
-### What cannot be replaced — and is reported instead
-
-| Case | Why | What Proteus does |
-|---|---|---|
-| **A logo drawn as vector paths** | It is not an image at all, so there is nothing to swap | Reports the file when you asked for it by name |
-| **Encrypted PDF** | The images cannot be read | Reports it, asks you to remove the password |
-| **Digitally signed PDF** | Any byte written invalidates the signature | Refuses and says so |
-| **Inline images** | They live inside the content stream, with no object to point at | Reports the page |
-| **JPEG 2000, JBIG2, CCITT fax** | Pillow cannot reconstruct the pixels, so the swap would be blind | Reports the picture |
-| **Damaged file** | Unparseable | Reports the error |
-
-**Vector logos are the important limitation, not a footnote.** Most print-quality PDFs —
-anything out of InDesign, Illustrator or LaTeX — draw the logo as paths. In practice PDF
-support covers *office* PDFs, not *press* PDFs. Proteus cannot see a vector logo, so it
-cannot tell you the logo is there; what it can say, and does, is "there is nothing
-replaceable in this file you pointed me at".
-
----
-
-## Nothing is skipped in silence
-
-One rule runs through the whole tool:
-
-> **If a file might carry the logo but cannot be dealt with, it is reported — never
-> dropped.**
-
-A rebranding that quietly leaves three logos in place is worse than one that stops and
-names them, because nobody goes looking for a failure they were never told about. Every
-finding carries two things: what is wrong, and what you can do about it by hand.
-
-| Where you are | How findings reach you |
-|---|---|
-| **Interface** | A red bar above the results — *"N files may carry the logo but could not be handled automatically"* — with **Show details** listing each one and its remedy. Hidden entirely when there is nothing to report, so it never becomes wallpaper. |
-| **Log file** | One `WARNING` line per finding, with path and reason. |
-| **Command line** | Printed to **stderr**, and **`--quiet` does not suppress them**: progress is noise, this is not. |
-| **Scheduled job** | Exit code **5**. |
-
-Exit code 5 is the part that matters when nobody is watching. A run that replaced what it
-could and left a vector logo behind is *not* a clean run, and a scheduler that saw `0`
-would never tell anyone. So:
-
-```
-0  everything done
-5  done what it could — findings listed, a person is needed
-```
-
-### Why the vector warning depends on the pattern
-
-A PDF containing no raster image is only reported when its **name matched your pattern**.
-Search a tree of ten thousand PDFs by image content and reporting every one of them would
-produce a warning list nobody can read, which is as useless as no warning at all. Pointing
-at a file by name is what makes "nothing replaceable in here" a finding rather than noise.
-
-To audit a folder of PDFs deliberately, name them:
-
-```bash
-python main.py --scan /srv/print --source ./new-logos --pattern "*.pdf" --pdf
-```
-
----
-
-## Command line and unattended runs
-
-Everything the interface does is also available without one. Pass any argument and Proteus
-runs as a command-line tool instead of opening a window — same entry point, same logic,
-no window server needed:
-
-```bash
-python main.py --scan /srv/intranet --source ./new-logos --pattern "logo*.png"
-```
-
-That command **changes nothing**. A run is a dry run unless you add `--apply`, because the
-default has to be the safe one when nobody is watching the screen.
-
-```bash
-python main.py --scan /srv/intranet --source ./new-logos \
-               --pattern "logo*.png" --apply --report campaign.csv
-```
-
-### Why this exists
-
-The interface asks you to look at each pairing before it writes. That is exactly right when
-a person is present, and useless in three situations:
-
-| Situation | What the interface cannot do |
-|---|---|
-| Nightly job on a file server | Nobody is there to click ④ *Replace* |
-| A build or deployment pipeline | No display, and a failure must stop the pipeline |
-| Twenty branch-office shares | The same campaign, repeated by hand twenty times |
-
-**Unattended** simply means "runs to completion with no human in front of it": a scheduled
-task, a cron job, a pipeline step. The safety a person would provide — noticing a wrong
-pairing before it is written — has to be encoded in the arguments instead.
-
-### The safety model, without a human
-
-Three rules replace the operator's eyes. All three can be overridden, but only deliberately:
-
-| Rule | Default | Override |
-|---|---|---|
-| Nothing is written | Dry run | `--apply` |
-| An uncertain hit refuses the whole run | 0 tolerated | `--max-uncertain N` |
-| A replacement that would stretch a picture in a document refuses the run | forbidden | `--allow-distortion` |
-
-An **uncertain hit** is a content-search match below 95% similarity — the ones the interface
-would colour for review. Name-based matches are never uncertain: you asked for that pattern
-explicitly.
-
-A refusal is not a silent no-op. The offending files are listed, the CSV report is still
-written if you asked for one, and the exit code says why.
-
-### Exit codes
-
-The whole point of a scheduled job: the scheduler must be able to tell what happened.
-
-| Code | Meaning |
-|---|---|
-| `0` | Done — or a dry run that found work |
-| `1` | Finished, but some replacements failed |
-| `2` | Nothing matched |
-| `3` | Bad request: missing or invalid arguments, unreadable folder |
-| `4` | Refused on safety grounds — uncertain hits or a distortion |
-| `5` | Did what it could, but findings need a person — see [Nothing is skipped in silence](#nothing-is-skipped-in-silence) |
-| `130` | Interrupted (Ctrl-C) |
-
-`2` is deliberately not an error. A weekly job finding nothing left to rebrand has succeeded.
-
-### Options
-
-```
-what to scan
-  --scan FOLDER            folder to search for files to replace
-  --source FOLDER          folder holding the new logos
-
-how to find it
-  --pattern GLOB           wildcard, e.g. "logo*.png"; several separated by ";"
-  --reference IMAGE...     one or more copies of the OLD logo — content search
-  --similarity PCT         minimum visual similarity for --reference (default 90)
-  --office                 also look inside .docx/.pptx/.xlsx documents
-  --pdf                    also look inside PDF files (raster images only)
-
-what to do
-  --apply                  actually write. Without it nothing is modified.
-  --no-backup              do not keep a .bak of each original (not advised)
-  --restore                restore originals from their backups and exit
-  --audit                  inventory only: what carries the logo and where.
-                           No --source needed, and it never writes.
-
-safety
-  --max-uncertain N        tolerate at most N hits below 95% similarity
-  --allow-distortion       allow replacements that would stretch a picture
-
-output
-  --report FILE.csv        CSV of what was found and done
-  --language {en,it}       language of messages and report headers
-  --quiet                  only report problems
-  --verbose                one line per file
-```
-
-`--restore` is a dry run by default too, and it also honours `--apply`.
-
-### Scheduling it
-
-Progress goes to stdout, problems to stderr, so redirecting the two separately gives you a
-log and an alert channel:
-
-```bash
-# /etc/cron.d/rebranding — every Sunday at 03:00
-0 3 * * 0 rebrand /opt/proteus/run.sh --scan /srv/shares --source /srv/brand/2026 \
-    --reference /srv/brand/old-logo.png --office --apply \
-    --report /var/log/proteus/$(date +\%F).csv >>/var/log/proteus/run.log 2>&1
-```
-
-```powershell
-# Windows Task Scheduler
-schtasks /create /tn "Rebranding" /sc weekly /d SUN /st 03:00 /tr `
-  "C:\Proteus\Proteus.exe --scan \\fs01\shares --source C:\Brand\2026 --pattern logo*.png --apply"
-```
-
-`Proteus.exe` is the one executable for both uses — see
-[Building a standalone executable](#building-a-standalone-executable) for how it manages
-to be both a console program and a double-clickable app.
-
-### Trying it safely
-
-The honest way to adopt this is in three steps, and the exit code tells you when to move on:
-
-1. `--verbose` with no `--apply` — read every proposed pairing.
-2. Add `--report` and open the CSV.
-3. Add `--apply`. Keep backups; `--restore` undoes the campaign.
-
----
-
-## Matching algorithm
+### Matching algorithm
 
 For each file to replace, candidates are filtered and then ranked.
 
@@ -767,9 +505,155 @@ candidate is chosen, but it must never make a pixel-perfect match look worse:
 For formats whose resolution cannot be read (PDF, EPS) the grade falls back to name
 similarity alone.
 
----
+### Office documents
 
-## Safety model
+In a real rebranding most of the logos are not loose PNGs on a share — they are inside
+reports, decks and spreadsheet templates. Tick **Also look inside Office documents** and
+Proteus treats a picture embedded in a `.docx` the same as one sitting on disk: it appears
+in the results, gets a preview and a match, and is replaced with a backup.
+
+Modern Office files are ZIP packages, and every picture in them is stored as an ordinary
+image file under a `media/` folder inside. Proteus reads and rewrites them with the
+standard library alone — there is no new dependency, and no Office installation is needed.
+
+Supported: `.docx` `.docm` `.dotx` `.dotm` `.pptx` `.pptm` `.potx` `.potm` `.ppsx`
+`.xlsx` `.xlsm` `.xltx` `.xltm`.
+
+#### One picture, every occurrence
+
+Office stores a picture **once** however many times it appears. A logo used in the body
+*and* in the page header is a single file inside the package, so one replacement fixes
+both — and the document is backed up **once**, no matter how many of its pictures change.
+That matters: replacing three logos one at a time would otherwise leave three backups of
+successive states and no clean copy of the original.
+
+#### The frame does not follow the picture
+
+This is the way a bulk replacement can quietly ruin a thousand documents.
+
+The size and position of a picture are stored in the **document**, not in the image. A
+shape laid out at 3.33 × 1.11 inches stays 3.33 × 1.11 inches after the image inside it is
+swapped. Drop a square logo into a frame built for a 3:1 one and Word stretches it to fit.
+Nothing errors; the deck just looks wrong, and nobody notices until it is printed.
+
+Proteus compares the aspect ratio of the old picture with the new one and **flags the
+replacement in orange**, listing the count in the operation summary before you commit.
+The old picture's own ratio is used as a proxy for the frame, since the frame was almost
+certainly sized to it when the image was first inserted.
+
+#### Not handled
+
+- **`.doc`, `.ppt`, `.xls`** — the pre-2007 binary formats are OLE compound files, not ZIP
+  packages.
+- **EMF/WMF metafiles**, which Office produces when a logo is *pasted* rather than
+  inserted. They cannot be rasterised by Pillow, so they could be neither previewed nor
+  compared — only swapped blindly, which is worse than not touching them. **They are
+  reported**, with the remedy: delete the pasted picture and re-insert it with
+  *Insert > Pictures*. Pasting is how most logos get into a corporate document, so this is
+  the finding you are most likely to see.
+- **Password-protected or damaged packages** are reported too, and the two are
+  distinguished: a protected `.docx` is an OLE compound file rather than a ZIP, so calling
+  it "damaged" would send you looking for the wrong problem.
+- Logos drawn with native Office shapes, or composited into a larger picture.
+
+### PDF files
+
+Tick **Also look inside PDF files** (or pass `--pdf`) and Proteus reads the raster images
+a PDF contains, compares them like any other file, and writes the new logo back into the
+document.
+
+#### How a PDF stores a picture
+
+Every bitmap a PDF shows is an *image XObject*: a stream of encoded pixels plus a
+dictionary giving its width, height, colour space and compression. The page's content
+stream then paints it through a transformation matrix. Replacing a logo means swapping the
+stream and its dictionary while leaving the reference — and the matrix — untouched.
+
+Proteus uses [**pypdf**](https://pypi.org/project/pypdf/) for this, and specifically its
+own `ImageFile.replace()`, which re-encodes the picture and fixes `/Width`, `/Height`,
+`/ColorSpace`, `/BitsPerComponent` and `/Length` together. Editing the bytes directly does
+work — it was measured before this was built — but it means rebuilding the cross-reference
+table by hand, and it goes blind as soon as a producer uses object streams, which modern
+writers do. On a tool that overwrites files in place, that is not a trade worth making.
+
+#### Any format may replace any picture
+
+Unlike an Office package, where the media file's extension is part of a content-type
+contract, a PDF image is re-encoded from pixels on the way in. The **same-format rule is
+therefore lifted for PDF rows**: a PNG can replace a JPEG-compressed logo, which is the
+normal case — brand assets arrive as PNG, and PDFs store them as JPEG.
+
+#### One picture, one entry
+
+Rows appear as `brochure.pdf!/p2i1` — "the first image painted on page 2 of
+brochure.pdf". Position is used rather than the PDF object number because
+`PdfWriter(clone_from=…)` renumbers objects: an image read as object 1 comes back as
+object 4, so a number captured during the scan cannot find the picture again at write
+time. Before writing, Proteus checks the picture at that position still has the size the
+scan measured, and refuses if it does not — the document changed, and what is there now
+was never reviewed.
+
+Several pictures in the same PDF are replaced in **one rewrite and one backup**, exactly as
+for Office documents.
+
+#### What cannot be replaced — and is reported instead
+
+| Case | Why | What Proteus does |
+|---|---|---|
+| **A logo drawn as vector paths** | It is not an image at all, so there is nothing to swap | Reports the file when you asked for it by name |
+| **Encrypted PDF** | The images cannot be read | Reports it, asks you to remove the password |
+| **Digitally signed PDF** | Any byte written invalidates the signature | Refuses and says so |
+| **Inline images** | They live inside the content stream, with no object to point at | Reports the page |
+| **JPEG 2000, JBIG2, CCITT fax** | Pillow cannot reconstruct the pixels, so the swap would be blind | Reports the picture |
+| **Damaged file** | Unparseable | Reports the error |
+
+**Vector logos are the important limitation, not a footnote.** Most print-quality PDFs —
+anything out of InDesign, Illustrator or LaTeX — draw the logo as paths. In practice PDF
+support covers *office* PDFs, not *press* PDFs. Proteus cannot see a vector logo, so it
+cannot tell you the logo is there; what it can say, and does, is "there is nothing
+replaceable in this file you pointed me at".
+
+### Nothing is skipped in silence
+
+One rule runs through the whole tool:
+
+> **If a file might carry the logo but cannot be dealt with, it is reported — never
+> dropped.**
+
+A rebranding that quietly leaves three logos in place is worse than one that stops and
+names them, because nobody goes looking for a failure they were never told about. Every
+finding carries two things: what is wrong, and what you can do about it by hand.
+
+| Where you are | How findings reach you |
+|---|---|
+| **Interface** | A red bar above the results — *"N files may carry the logo but could not be handled automatically"* — with **Show details** listing each one and its remedy. Hidden entirely when there is nothing to report, so it never becomes wallpaper. |
+| **Log file** | One `WARNING` line per finding, with path and reason. |
+| **Command line** | Printed to **stderr**, and **`--quiet` does not suppress them**: progress is noise, this is not. |
+| **Scheduled job** | Exit code **5**. |
+
+Exit code 5 is the part that matters when nobody is watching. A run that replaced what it
+could and left a vector logo behind is *not* a clean run, and a scheduler that saw `0`
+would never tell anyone. So:
+
+```
+0  everything done
+5  done what it could — findings listed, a person is needed
+```
+
+#### Why the vector warning depends on the pattern
+
+A PDF containing no raster image is only reported when its **name matched your pattern**.
+Search a tree of ten thousand PDFs by image content and reporting every one of them would
+produce a warning list nobody can read, which is as useless as no warning at all. Pointing
+at a file by name is what makes "nothing replaceable in here" a finding rather than noise.
+
+To audit a folder of PDFs deliberately, name them:
+
+```bash
+python main.py --scan /srv/print --source ./new-logos --pattern "*.pdf" --pdf
+```
+
+### Safety model
 
 Bulk-overwriting files on a shared drive deserves care. The guarantees are:
 
@@ -793,9 +677,7 @@ Bulk-overwriting files on a shared drive deserves care. The guarantees are:
 | Wrong replacement already applied | Restore from backups reverts to the pre-rebranding state |
 | Long scan on an unresponsive share | Cancellable, with per-folder error reporting rather than a hard abort |
 
----
-
-## Backup and restore
+### Backup and restore
 
 With **Backup** enabled, each original is copied before being overwritten:
 
@@ -811,9 +693,137 @@ afterwards.
 
 Backup files are excluded from scans, so they never become replacement targets themselves.
 
----
+### Command line and unattended runs
 
-## CSV reports
+Everything the interface does is also available without one. Pass any argument and Proteus
+runs as a command-line tool instead of opening a window — same entry point, same logic,
+no window server needed:
+
+```bash
+python main.py --scan /srv/intranet --source ./new-logos --pattern "logo*.png"
+```
+
+That command **changes nothing**. A run is a dry run unless you add `--apply`, because the
+default has to be the safe one when nobody is watching the screen.
+
+```bash
+python main.py --scan /srv/intranet --source ./new-logos \
+               --pattern "logo*.png" --apply --report campaign.csv
+```
+
+#### Why this exists
+
+The interface asks you to look at each pairing before it writes. That is exactly right when
+a person is present, and useless in three situations:
+
+| Situation | What the interface cannot do |
+|---|---|
+| Nightly job on a file server | Nobody is there to click ④ *Replace* |
+| A build or deployment pipeline | No display, and a failure must stop the pipeline |
+| Twenty branch-office shares | The same campaign, repeated by hand twenty times |
+
+**Unattended** simply means "runs to completion with no human in front of it": a scheduled
+task, a cron job, a pipeline step. The safety a person would provide — noticing a wrong
+pairing before it is written — has to be encoded in the arguments instead.
+
+#### The safety model, without a human
+
+Three rules replace the operator's eyes. All three can be overridden, but only deliberately:
+
+| Rule | Default | Override |
+|---|---|---|
+| Nothing is written | Dry run | `--apply` |
+| An uncertain hit refuses the whole run | 0 tolerated | `--max-uncertain N` |
+| A replacement that would stretch a picture in a document refuses the run | forbidden | `--allow-distortion` |
+
+An **uncertain hit** is a content-search match below 95% similarity — the ones the interface
+would colour for review. Name-based matches are never uncertain: you asked for that pattern
+explicitly.
+
+A refusal is not a silent no-op. The offending files are listed, the CSV report is still
+written if you asked for one, and the exit code says why.
+
+#### Exit codes
+
+The whole point of a scheduled job: the scheduler must be able to tell what happened.
+
+| Code | Meaning |
+|---|---|
+| `0` | Done — or a dry run that found work |
+| `1` | Finished, but some replacements failed |
+| `2` | Nothing matched |
+| `3` | Bad request: missing or invalid arguments, unreadable folder |
+| `4` | Refused on safety grounds — uncertain hits or a distortion |
+| `5` | Did what it could, but findings need a person — see [Nothing is skipped in silence](#nothing-is-skipped-in-silence) |
+| `130` | Interrupted (Ctrl-C) |
+
+`2` is deliberately not an error. A weekly job finding nothing left to rebrand has succeeded.
+
+#### Options
+
+```
+what to scan
+  --scan FOLDER            folder to search for files to replace
+  --source FOLDER          folder holding the new logos
+
+how to find it
+  --pattern GLOB           wildcard, e.g. "logo*.png"; several separated by ";"
+  --reference IMAGE...     one or more copies of the OLD logo — content search
+  --similarity PCT         minimum visual similarity for --reference (default 90)
+  --office                 also look inside .docx/.pptx/.xlsx documents
+  --pdf                    also look inside PDF files (raster images only)
+
+what to do
+  --apply                  actually write. Without it nothing is modified.
+  --no-backup              do not keep a .bak of each original (not advised)
+  --restore                restore originals from their backups and exit
+  --audit                  inventory only: what carries the logo and where.
+                           No --source needed, and it never writes.
+
+safety
+  --max-uncertain N        tolerate at most N hits below 95% similarity
+  --allow-distortion       allow replacements that would stretch a picture
+
+output
+  --report FILE.csv        CSV of what was found and done
+  --language {en,it}       language of messages and report headers
+  --quiet                  only report problems
+  --verbose                one line per file
+```
+
+`--restore` is a dry run by default too, and it also honours `--apply`.
+
+#### Scheduling it
+
+Progress goes to stdout, problems to stderr, so redirecting the two separately gives you a
+log and an alert channel:
+
+```bash
+# /etc/cron.d/rebranding — every Sunday at 03:00
+0 3 * * 0 rebrand /opt/proteus/run.sh --scan /srv/shares --source /srv/brand/2026 \
+    --reference /srv/brand/old-logo.png --office --apply \
+    --report /var/log/proteus/$(date +\%F).csv >>/var/log/proteus/run.log 2>&1
+```
+
+```powershell
+# Windows Task Scheduler
+schtasks /create /tn "Rebranding" /sc weekly /d SUN /st 03:00 /tr `
+  "C:\Proteus\Proteus.exe --scan \\fs01\shares --source C:\Brand\2026 --pattern logo*.png --apply"
+```
+
+`Proteus.exe` is the one executable for both uses — see
+[Building a standalone executable](#building-a-standalone-executable) for how it manages
+to be both a console program and a double-clickable app.
+
+#### Trying it safely
+
+The honest way to adopt this is in three steps, and the exit code tells you when to move on:
+
+1. `--verbose` with no `--apply` — read every proposed pairing.
+2. Add `--report` and open the CSV.
+3. Add `--apply`. Keep backups; `--restore` undoes the campaign.
+
+### CSV reports
 
 Both exports use `;` as the separator and a UTF-8 BOM, so they open cleanly in Excel with
 European locale settings.
@@ -825,26 +835,7 @@ European locale settings.
 
 Column headers follow the interface language.
 
----
-
-## Languages
-
-English is the default and the source language of every message. Italian is fully
-translated. The choice is persisted and applied immediately — the interface is rebuilt in
-place, keeping your scan results, your pairings and your log.
-
-Adding a language means adding one dictionary to `CATALOGUES` in
-[`i18n.py`](i18n.py). Anything you do not translate falls back to English rather than
-showing a placeholder. Three tests keep the catalogues honest:
-
-- every string passed through `t()` has an entry,
-- no entry is stale,
-- `{placeholders}` are preserved across languages (a dropped one would raise in front of
-  the user).
-
----
-
-## Files and folders
+### Files and folders
 
 ```
 ├── main.py                       # Entry point
@@ -880,7 +871,73 @@ location is read-only — the typical `C:\Program Files` install — both fall b
 `%LOCALAPPDATA%\Proteus\` (or `~/.local/share/Proteus/` elsewhere). Logs
 rotate at 2 MB, keeping five files.
 
----
+## Requirements
+
+| Package | Required? | Why |
+|---|---|---|
+| `pillow` ≥ 9.1 | **Yes** | Image previews and resolution reading. 9.1 is the floor because of `Image.Resampling`. |
+| `tkinter` | **Yes** | The interface. Ships with Python, but packaged separately on Linux. |
+| `pypdf` ≥ 4.0 | For PDFs | Finding and replacing images inside PDF files. BSD-3-Clause. Without it the app runs normally and the PDF option reports that the package is missing. |
+| `ttkbootstrap` ≥ 1.10 | Optional | Nicer theming. Without it the app uses standard ttk themes; either major version works. |
+| `pyinstaller` ≥ 5.13 | Build only | Producing the standalone executable. |
+| `mss` | Docs only | Capturing the README screenshots. |
+
+Without Pillow the application still runs and still replaces files — it just cannot show
+previews or read resolutions, and says so on the configuration tab.
+
+## Development
+
+```bash
+git clone https://github.com/MarcoLombardoDev/Proteus.git
+cd Proteus
+pip install -r requirements-dev.txt
+python main.py
+```
+
+The test suite is described under [Testing](#testing). To regenerate the artwork or the
+documentation images:
+
+```bash
+python assets/generate_icon.py
+pip install mss && xvfb-run -a python docs/generate_screenshots.py
+```
+
+The screenshot script needs `mss`, and `python-docx` for the Office sample document — it
+skips that one file with a message rather than failing if the library is absent. The
+terminal image is produced by running the real command line and drawing its output, so it
+cannot drift out of step with the code.
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+
+python -m pytest                 # Windows / macOS
+xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
+```
+
+The suite is spread across eleven files:
+
+| File | Covers |
+|---|---|
+| `tests/test_core.py` | Scanning, matching, atomic replacement, backups, restore, CSV, settings, plus an end-to-end campaign |
+| `tests/test_gui.py` | Startup, the full wizard flow, dry run, row toggling, sorting, manual override, restore, language switching, shutdown |
+| `tests/test_i18n.py` | Translation layer, catalogue completeness and placeholder integrity |
+| `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
+| `tests/test_release_workflow.py` | `.github/workflows/release.yml` and `.github/release-body.md` themselves: all three platforms built, every bundle smoke-tested, fixed release title and notes on both publishing paths |
+| `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
+| `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups, aspect-ratio guarding, and the pasted/protected cases that must be reported |
+| `tests/test_pdf.py` | Real PDFs built and re-opened with pypdf: finding, replacing, the staleness guard, and every case that must be reported instead |
+| `tests/test_cli.py` | Every exit code, the safety refusals and their overrides, reports, restore, output control and entry-point dispatch |
+| `tests/test_docs.py` | Screenshots referenced and shown, the price list agreeing with itself, and the AGPL text left verbatim |
+| `tests/test_paths.py` | Extended-length paths, and every filesystem error turned into a reason with a remedy. Two tests need real Windows and run in CI there |
+
+GUI tests run headless and are skipped automatically where no display exists. A `conftest`
+fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`
+fails instead of hanging the suite forever.
+
+CI runs the suite on **Ubuntu and Windows** against **Python 3.10 and 3.12**, and then
+builds the executable so a broken build surfaces before distribution.
 
 ## Building a standalone executable
 
@@ -889,12 +946,12 @@ python build.py
 ```
 
 On Windows, `compile.bat` does the same. The result is **one** single-file executable in
-`dist/Proteus.exe` (~21 MB), with the icon embedded and a `logs/` folder prepared alongside
-it — usable both ways:
+`dist/Proteus` (`dist/Proteus.exe` on Windows, ~21 MB), with the icon embedded and a
+`logs/` folder prepared alongside it — usable both ways:
 
 ```
-Proteus.exe                    opens the interface
-Proteus.exe --help             the command line, for scripts and scheduled jobs
+Proteus                    opens the interface
+Proteus --help             the command line, for scripts and scheduled jobs
 ```
 
 That takes a deliberate trade-off to pull off. PyInstaller builds an executable as either
@@ -913,88 +970,38 @@ The build script installs anything missing, picks the right `--add-data` separat
 platform, and falls back to the running interpreter when the Windows `py` launcher is not
 available.
 
-### Building without a Windows machine
+### Building for the other two platforms
 
-`build.py` has to run on Windows to produce a real `.exe` — PyInstaller cross-compiles for
-nothing. If you are on Linux or macOS,
-**[`.github/workflows/build.yml`](.github/workflows/build.yml)** does the build for you on a
-genuine `windows-latest` GitHub Actions runner, in one of two ways:
+`build.py` produces a binary native to whatever machine runs it: PyInstaller cross-compiles
+for nothing. Without three machines,
+**[`.github/workflows/release.yml`](.github/workflows/release.yml)** builds all three on
+genuine GitHub runners, in one of two ways:
 
-1. **Manual run, for a quick check.** On GitHub, open **Actions → Build Windows executable →
-   Run workflow**, wait for it to finish (a few minutes: it runs the test suite, then builds),
-   then download `Proteus-windows-exe` from the run's **Artifacts** section. This download
-   requires a GitHub login and expires after 90 days, same as any workflow artifact — fine for
-   "does this still build", not for handing someone a link.
-2. **Push a tag matching `v*` (e.g. `v1.3`), to actually publish the release.** This runs the
-   same test-and-build steps, and additionally publishes a **GitHub Release** for that tag with
-   `Proteus.exe` attached as a release asset. Release assets need no login and never expire —
-   this is the one to use for "here, download Proteus".
+1. **Push a tag matching `v*`** (e.g. `v1.3.0`). The workflow creates the release, builds
+   on `windows-latest`, `macos-latest` and `ubuntu-latest`, smoke-tests each bundle with
+   `--version` and `--help`, and attaches one archive per platform. Release assets need no
+   login and never expire — this is the one to use for "here, download Proteus".
+2. **Run it by hand**, from **Actions → Release → Run workflow**, giving it the tag to
+   build. Same result, without pushing anything.
 
-Either path is separate from the build check in `ci.yml`, which runs on every push purely to
-catch a broken build early — that one exists to protect CI, this one exists to hand you a file.
+Either path is separate from the build check in `ci.yml`, which runs on every push purely
+to catch a broken build early — that one exists to protect CI, this one exists to hand you
+a file.
 
----
+## Troubleshooting
 
-## Development
-
-```bash
-pip install -r requirements-dev.txt
-
-python -m pytest                 # Windows / macOS
-xvfb-run -a python -m pytest     # Linux (the GUI tests need a display)
-```
-
-The suite is spread across ten files:
-
-| File | Covers |
+| Symptom | Cause and fix |
 |---|---|
-| `tests/test_core.py` | Scanning, matching, atomic replacement, backups, restore, CSV, settings, plus an end-to-end campaign |
-| `tests/test_gui.py` | Startup, the full wizard flow, dry run, row toggling, sorting, manual override, restore, language switching, shutdown |
-| `tests/test_i18n.py` | Translation layer, catalogue completeness and placeholder integrity |
-| `tests/test_build.py` | Console encoding, platform separators, launcher choice and build prerequisites |
-| `tests/test_content_search.py` | Perceptual hashing across scales, formats and transparency — and, just as important, what must *not* match |
-| `tests/test_office.py` | Real .docx/.pptx/.xlsx built and re-opened with the official libraries, package rewriting, backups, aspect-ratio guarding, and the pasted/protected cases that must be reported |
-| `tests/test_pdf.py` | Real PDFs built and re-opened with pypdf: finding, replacing, the staleness guard, and every case that must be reported instead |
-| `tests/test_cli.py` | Every exit code, the safety refusals and their overrides, reports, restore, output control and entry-point dispatch |
-| `tests/test_docs.py` | Screenshots referenced and shown, the price list agreeing with itself, and the AGPL text left verbatim |
-| `tests/test_paths.py` | Extended-length paths, and every filesystem error turned into a reason with a remedy. Two tests need real Windows and run in CI there |
+| `ModuleNotFoundError: No module named 'tkinter'` | `tkinter` is packaged separately on Linux and on Homebrew Python — see [Installation from source](#prerequisites). |
+| The PDF option says the package is missing | `pypdf` is not installed. `pip install -r requirements.txt`; the released builds already carry it. |
+| No previews, and no resolutions on the scan tab | Pillow is missing, or the files are EPS/PDF, which Pillow cannot read without Ghostscript. Matching and replacement still work. |
+| The scan finds nothing | Check the search pattern first, then try [content search](#content-search) with no pattern at all — a file nobody named consistently is exactly what that mode is for. |
+| A run exits with code 4 and writes nothing | That is the safety refusal, not a failure: at least one match fell below the similarity threshold. Read the named files, then re-run with the interface or with an explicit override. |
+| A logo inside a PDF is reported but not replaced | It is drawn as vector artwork. See [Scope and limitations](#scope-and-limitations). |
+| A campaign was interrupted halfway | Use the restore button, or the backups on disk — see [Backup and restore](#backup-and-restore). |
 
-GUI tests run headless and are skipped automatically where no display exists. A `conftest`
-fixture neutralises every modal dialog, so a test that reaches an unexpected `askyesno`
-fails instead of hanging the suite forever.
-
-CI runs the suite on **Ubuntu and Windows** against **Python 3.10 and 3.12**, and then
-builds the Windows executable so a broken build surfaces before distribution.
-
-To regenerate the artwork or the documentation images:
-
-```bash
-python assets/generate_icon.py
-pip install mss && xvfb-run -a python docs/generate_screenshots.py
-```
-
-The screenshot script needs `mss`, and `python-docx` for the Office sample document — it
-skips that one file with a message rather than failing if the library is absent. The
-terminal image is produced by running the real command line and drawing its output, so it
-cannot drift out of step with the code.
-
----
-
-## Requirements
-
-| Package | Required? | Why |
-|---|---|---|
-| `pillow` ≥ 9.1 | **Yes** | Image previews and resolution reading. 9.1 is the floor because of `Image.Resampling`. |
-| `tkinter` | **Yes** | The interface. Ships with Python, but packaged separately on Linux. |
-| `pypdf` ≥ 4.0 | For PDFs | Finding and replacing images inside PDF files. BSD-3-Clause. Without it the app runs normally and the PDF option reports that the package is missing. |
-| `ttkbootstrap` ≥ 1.10 | Optional | Nicer theming. Without it the app uses standard ttk themes; either major version works. |
-| `pyinstaller` ≥ 5.13 | Build only | Producing the standalone executable. |
-| `mss` | Docs only | Capturing the README screenshots. |
-
-Without Pillow the application still runs and still replaces files — it just cannot show
-previews or read resolutions, and says so on the configuration tab.
-
----
+The log pane records every step; `logs/` next to the executable keeps the same text on
+disk, and `--report` writes a CSV of exactly what a run did or would do.
 
 ## Scope and limitations
 
@@ -1028,8 +1035,6 @@ previews or read resolutions, and says so on the configuration tab.
 - The Windows executables are built and published by CI; local builds have been verified on
   Linux.
 
----
-
 ## License & Commercial Licensing
 
 Proteus is open-source software released under the
@@ -1037,9 +1042,10 @@ Proteus is open-source software released under the
 
 Copyright © 2026 Marco Lombardo.
 
-**The free build is the whole product.** Every feature documented above is in it. There is
-no paid edition, no feature gate, no licence key, no seat limit and no phone-home. If
-AGPL-3.0 works for you, you are done reading — Proteus is yours to use.
+**The free build is the whole product.** Every feature documented above is in it —
+bulk replacement, content search, Office documents, PDFs, the command line. There is
+no paid edition, no feature gate, no licence key, no seat limit and no phone-home.
+If AGPL-3.0 works for you, you are done reading — Proteus is yours to use.
 
 ### What AGPL-3.0 Means for You
 
@@ -1047,54 +1053,66 @@ AGPL-3.0 works for you, you are done reading — Proteus is yours to use.
 |---|---|---|
 | Internal use, any number of machines and users | ✅ Yes | None |
 | Modify it and keep the changes to yourself | ✅ Yes | None |
-| Fork & publish on GitHub | ✅ Yes | Must stay AGPL-3.0 |
+| Fork and publish on GitHub | ✅ Yes | Must stay AGPL-3.0 |
 | Redistribute it, modified or not, under AGPL-3.0 | ✅ Yes | Must ship the source |
 | Deploy a modified version as a network service | ✅ Yes | Must publish the source of your modified version |
-| Integrate into a **closed-source product** | ⚠️ Restricted | Requires a commercial licence |
-| Offer as a **proprietary SaaS** without sharing source | ❌ Not under AGPL | Requires a commercial licence |
-| **Resell** it, or ship it inside a product you sell | ❌ Not under AGPL | Requires a commercial licence |
+| Integrate into a **closed-source product** used internally | ⚠️ Restricted | Requires a Commercial licence |
+| Offer as a **proprietary SaaS** without sharing source | ❌ Not under AGPL | Requires a Redistribution licence |
+| Embed it in, or ship it inside, a product you **sell to third parties** | ❌ Not under AGPL | Requires a Redistribution licence |
 
 The dividing line is one rule: **AGPL-3.0 is free as long as the source stays open.**
 
-
 ### Commercial Licensing
 
-Three licence families, not one price list: **Commercial** removes the copyleft
-obligation for closed-source *internal* use, sized by employee count. **Redistribution**
-is a separate licence for shipping Proteus (or a derivative) to third parties — embedded,
-OEM'd, resold, or run as a service for your customers. Barred by internal policy from using
-AGPL code at all? That's Commercial too.
+The commercial offer removes the copyleft obligation, and nothing else. It splits into two
+branches that answer different questions — **Commercial**, sized by how big the
+organisation using Proteus internally is, and **Redistribution**, needed whenever the
+software (or a derivative) reaches third parties, regardless of size:
 
-| Tier | Price | Scope |
-|---|---:|---|
-| **Community** | **Free** | Everything Proteus does, under AGPL-3.0. Unlimited internal use. |
-| **Commercial — Small** | **€500 / year** | 1–49 employees. Closed-source internal use, one legal entity. |
-| **Commercial — Medium** | **€1,000 / year** | 50–249 employees. Same model as Small. |
-| **Commercial — Large** | **€1,800 / year** | 250–999 employees. Same model as Small and Medium. |
-| **Commercial — Enterprise** | **from €2,900 / year** | 1,000+ employees, or an explicitly agreed group-wide perimeter. |
-| **Redistribution — Standard** | **€1,900 / year** | Embed it in a product you sell, or run it as a hosted service for your customers. |
-| **Redistribution — Enterprise** | **from €7,000 / year** | Large-scale redistribution: worldwide, high-volume, large OEM programmes. |
+```
+Community         AGPL-3.0, free
+Commercial        Small (1–49 employees) · Medium (50–249) · Large (250–999) · Enterprise (1,000+ / group)
+Redistribution    Standard · Enterprise
+```
+
+| Tier | Price | Perpetual | Scope |
+|---|---:|---:|---|
+| **Community** | **Free** | — | Everything Proteus does, under AGPL-3.0. Unlimited internal use. |
+| **Commercial — Small** | **€500 / year** | €1,500 | 1–49 employees, internal use, one legal entity. |
+| **Commercial — Medium** | **€1,000 / year** | €3,000 | 50–249 employees, internal use, one legal entity. |
+| **Commercial — Large** | **€1,800 / year** | €5,400 | 250–999 employees, internal use, one legal entity. |
+| **Commercial — Enterprise** | **from €2,900 / year** | — | 1,000+ employees, or a Corporate Group scope. |
+| **Redistribution — Standard** | **€1,900 / year** | €5,700 | Embed it in a product you sell, or ship it to customers. |
+| **Redistribution — Enterprise** | **from €7,000 / year** | — | Large-scale distribution — worldwide, high volume, or OEM. |
+
+A perpetual licence is three times the annual rate of the same tier, bought once, covering
+the major version current at purchase. Both Enterprise tiers are negotiated per case
+instead.
 
 The same commitments apply at every paid tier:
 
-- **Email support is always included** — 5 business days at Commercial Small/Medium, 3 at
-  Commercial Large and Redistribution Standard, 2 at Commercial Enterprise and
-  Redistribution Enterprise. It is never sold separately to a paying customer.
+- **Email support is always included** — 5 business days at Commercial Small down to 2 at
+  either Enterprise tier. It is never sold separately to a paying customer.
 - **Custom development is never included**, at any tier. It is available on request and
   **quoted separately**, per project, at a fixed price agreed before work starts
   (indicative day rate: **€450 / day**).
-- **No retroactive price rise, cancel any time.** No notice period, no auto-renewal trap.
-- **50% off** any Commercial tier for organisations under 10 employees and €1M revenue.
-  **Free** commercial licences for non-profits, academia and published research — ask.
+- **No retroactive price rise, cancel any time.** Versions released during your term stay
+  licensed to you.
+- **50% off** for organisations under 10 employees and €1M revenue. **Free** commercial
+  licences for non-profits, academia and published research — ask.
 
-A group-wide perimeter, or a large-scale redistribution deal, is never implied by
-belonging to a group or embedding the software once — it is explicitly agreed and named in
-the certificate. See §§2–4 of the full terms for exactly what each tier does and does not
-include.
+A Commercial licence, below Enterprise, covers exactly one legal entity: it does not
+automatically extend to other companies in the same group, and it does not include
+redistribution, OEM or embedding rights — those need a Redistribution licence on top.
+Prices are per licensed legal entity, excluding VAT. **Seats are never counted.** Full
+terms, the Employee Count and Corporate Group definitions, and the third-party component
+review: **[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)**.
 
-Prices are per organisation, excluding VAT. **Seats are never counted.** Full terms, what is
-*not* included, and the third-party component review:
-**[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)**.
+> ✅ **Every dependency is permissively licensed.** Nothing in the tree imposes
+> copyleft on a commercial licensee — PDF support uses `pypdf` (BSD-3-Clause) rather
+> than PyMuPDF (AGPL / Artifex commercial), and Office packages are read and written
+> with the standard library alone. See
+> [§11](COMMERCIAL-LICENSE.md#11-third-party-components).
 
 ### How to get in touch
 
@@ -1104,11 +1122,9 @@ goes to one address:
 
 > **[marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20commercial%20licence%20enquiry)** — Marco Lombardo
 
-The same address is shown in the application's footer, and clicking it opens your mail
-client on a pre-filled enquiry. Please keep **GitHub Issues for bugs and feature
-requests**, not for licensing.
+Please keep **GitHub Issues for bugs and feature requests**, not for licensing.
 
-### Contributing
+## Contributing
 
 Contributions are welcome. All contributors must agree to the
 [Contributor License Agreement (CLA)](CLA.md) before a Pull Request can be merged. The CLA
@@ -1119,17 +1135,22 @@ commercial terms — this is what makes the dual-licensing model sustainable.
 > `I have read and agree to the Contributor License Agreement (CLA.md).`
 > in your Pull Request description.
 
-One project-specific rule: since this tool exists to replace brand assets, **contributions
-must not introduce third-party logos, icons or trademarks**. Sample images, test fixtures
-and screenshots use neutral synthetic artwork only.
+Practical expectations:
 
----
+- Since this tool exists to replace brand assets, **contributions must not introduce
+  third-party logos, icons or trademarks**. Sample images, test fixtures and
+  screenshots use neutral synthetic artwork only.
+- Every bug fix arrives with a test that fails without the fix.
+- User-facing strings go through `i18n.py`, in **both** catalogues.
+- Add a `CHANGELOG.md` entry with the change.
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers the process in full.
 
 ## Disclaimer
 
-This software **overwrites files in place**. It ships with backups enabled by default, a
-dry-run mode and a restore function, and every write is atomic — but no safety net replaces
-your own backups.
+This software **overwrites files in place**. It ships with backups enabled by
+default, a dry-run mode and a restore function, and every write is atomic — but no
+safety net replaces your own backups.
 
 Before running a campaign against a production file server or a shared drive:
 
@@ -1137,9 +1158,9 @@ Before running a campaign against a production file server or a shared drive:
 2. keep **Backup** enabled for the real run,
 3. make sure you have an independent backup of the target tree.
 
-The software is provided **"as is", without warranty of any kind**, as set out in sections
-15 and 16 of the AGPL-3.0. The authors accept no liability for data loss or for any damage
-arising from its use.
+The software is provided **"as is", without warranty of any kind**, as set out in
+sections 15 and 16 of the AGPL-3.0. The authors accept no liability for data loss or
+for any damage arising from its use.
 
 ---
 

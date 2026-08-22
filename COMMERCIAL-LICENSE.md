@@ -1,6 +1,6 @@
 # Commercial Licence — Proteus
 
-**Proteus — Rebranding Tool**
+**Proteus — Rebranding Tool**  
 Copyright © 2026 Marco Lombardo
 
 Proteus is dual-licensed. It is available under the
@@ -11,8 +11,9 @@ Both licences cover **the same software**. There is no crippled edition, no feat
 back behind a paywall, no licence key and no phone-home. What you buy is **permission**,
 not functionality.
 
-That includes every capability: bulk replacement, visual content search, images inside
-Office documents and inside PDFs. Nothing is reserved for a paid tier, now or later.
+That includes every capability: bulk replacement, visual content search, images
+inside Office documents and inside PDFs, the command line and unattended runs.
+Nothing is reserved for a paid tier, now or later.
 
 > **To buy, or to ask anything commercial — including whether you need this at all —
 > email [marco.lombardo@gmail.com](mailto:marco.lombardo@gmail.com?subject=Proteus%20commercial%20licence%20enquiry).**
@@ -34,8 +35,8 @@ Most people do not. Read this before reading the price list.
 | Use Proteus inside your organisation, however many people, however many machines | **AGPL — free.** Nothing to buy, nothing to declare. |
 | Modify it for your own internal use and keep the changes to yourself | **AGPL — free.** |
 | Publish a fork, or ship a modified version to someone else | **AGPL — free**, provided you release your modified source under AGPL-3.0. |
-| Run a modified Proteus as a closed-source internal tool, for your own staff only | **Commercial** |
-| Ship Proteus, or code derived from it, inside a **closed-source product** you distribute | **Redistribution** |
+| Run a modified Proteus as a closed-source internal tool, for your own staff only | **Commercial** — see §3 |
+| Ship Proteus, or code derived from it, inside a **closed-source product** you distribute | **Redistribution** — see §4 |
 | Run a modified Proteus as a **hosted or SaaS service for your customers**, without publishing your source | **Redistribution** |
 | Redistribute it to your customers under **your own name or branding** | **Redistribution** |
 | Your organisation's policy forbids AGPL code, and you need it in writing | **Commercial** (or **Redistribution**, if you also distribute) |
@@ -56,13 +57,13 @@ PRODUCT LICENSING
 ├── Community
 │   └── AGPL-3.0
 │
-├── Commercial
+├── Commercial                    (internal use)
 │   ├── Small       — 1–49 employees
 │   ├── Medium      — 50–249 employees
 │   ├── Large       — 250–999 employees
 │   └── Enterprise  — 1,000+ employees / Corporate Group
 │
-└── Redistribution
+└── Redistribution                (reaches third parties)
     ├── Standard
     └── Enterprise
 ```
@@ -78,8 +79,8 @@ Three kinds of licence, not four price points on one list:
   five-person software house redistributing a product to ten thousand customers needs
   Redistribution, not a large Commercial tier.
 
-Every tier, in every branch, is the **same software** under §1 of this document: no
-feature is gated behind a higher tier.
+Every tier, in every branch, is the **same software** under the opening of this document:
+no feature is gated behind a higher tier.
 
 ---
 
@@ -154,8 +155,7 @@ to a third party — regardless of organisation size. Examples:
 - distribution as a component of a commercial solution.
 
 "OEM" is used above as an example of a Redistribution scenario, not as a separate category
-of its own — see §14 in spirit: OEM, embedded and other redistribution scenarios are all
-covered by the Redistribution licence.
+of its own — see §14.
 
 Subject to payment and to the specific agreement, a Redistribution licence may grant:
 
@@ -167,7 +167,7 @@ Subject to payment and to the specific agreement, a Redistribution licence may g
    not as a standalone competing tool.
 
 It does **not** automatically grant: exclusivity; unlimited sublicensing; rights to the
-Project Owner's trademarks; rights to third-party dependencies (§9); or transfer of the
+Project Owner's trademarks; rights to third-party dependencies (§11); or transfer of the
 licence to another party.
 
 ### 4.1 Redistribution — Standard
@@ -207,6 +207,27 @@ billed per developer, per user or per installation.
 | **Redistribution — Standard** | **€1,900 / year** | Ordinary commercial redistribution: embed it in a product you sell, or run it as a hosted service for your customers. |
 | **Redistribution — Enterprise** | **from €7,000 / year** | Large-scale redistribution: worldwide distribution, high-volume products, large OEM programmes. Scope priced per case. |
 
+### Perpetual option
+
+A perpetual licence is bought once and never renews. It covers **the major version current
+at the date of purchase**, in perpetuity, together with every patch and minor release
+within that major version. Moving to a later major version is a new purchase.
+
+It is priced at **three times the annual rate** of the same tier, and is offered on the
+four fixed-price tiers only — both Enterprise tiers are negotiated and priced per case
+instead.
+
+| Tier | Perpetual price (one-off) |
+|---|---:|
+| Commercial — Small | **€1,500** |
+| Commercial — Medium | **€3,000** |
+| Commercial — Large | **€5,400** |
+| Redistribution — Standard | **€5,700** |
+
+Support (§6) runs for **twelve months** from a perpetual purchase, and can be renewed
+afterwards at 20% of the annual rate of the same tier. The licence itself does not expire
+when support does.
+
 ### What every paid licence includes
 
 The same commitments, at every tier above Community:
@@ -223,7 +244,7 @@ The same commitments, at every tier above Community:
 
 | Who | What |
 |---|---|
-| Fewer than 10 employees **and** under €1M annual revenue | **50% off** any Commercial tier |
+| Fewer than 10 employees **and** under €1M annual revenue | **50% off** any annual Commercial or Redistribution tier |
 | Registered non-profits, accredited academic institutions, published research | **Free commercial licence** — ask |
 
 ---
@@ -267,8 +288,8 @@ It is **available on request and quoted separately**, per project:
 2. You get a written scope, a fixed price and a delivery window before any work starts.
 3. Nothing is invoiced until you accept that quote.
 
-The indicative day rate for Proteus is **€450 / day**, used to size a quote; the quote
-itself is fixed-price, not time-and-materials.
+The indicative day rate for Proteus is **€450 / day**, used to size a quote;
+the quote itself is fixed-price, not time-and-materials.
 
 Two things worth knowing before you ask:
 
@@ -307,10 +328,11 @@ audit clause.
 
 ## 9. Term, warranty and liability
 
-- **Term.** Annual from the invoice date, unless the certificate says otherwise.
+- **Term.** Annual from the invoice date, unless the certificate says otherwise, or
+  perpetual where the perpetual option in §5 was purchased.
 - **Updates.** Included for the duration of the term.
 - **Warranty.** Proteus is provided **as is**. No warranty of merchantability, fitness for a
-  particular purpose, or non-infringement. Read the [Disclaimer](README.md#disclaimer) — this tool overwrites files in place.
+  particular purpose, or non-infringement. Proteus overwrites files in place: read the [Disclaimer](README.md#disclaimer).
 - **Liability.** Total aggregate liability under a commercial licence is limited to **the
   fees paid in the twelve months preceding the claim**. Liability is not excluded where it
   cannot lawfully be excluded — death or personal injury caused by negligence, fraud, or
@@ -332,9 +354,10 @@ Stated plainly, so nobody discovers it after paying:
 - **No guarantee of future features.** The roadmap is not a contract.
 - **No exclusivity.** The same licence is available to your competitors.
 - **No rights to third-party components.** See §11.
-- **No hosted service.** Proteus is a desktop application and a command line. There is nothing to sign into.
-- **No implied redistribution rights on a Commercial licence**, and no implied group-wide
-  scope without an explicit Enterprise perimeter. See §3.
+- **No hosted service.** Proteus is a desktop application and a command line.
+  There is nothing to sign into.
+- **No implied redistribution rights on a Commercial licence**, and no implied
+  group-wide scope without an explicit Enterprise perimeter. See §3.
 
 ---
 
@@ -351,20 +374,21 @@ a commercial licence cannot and does not relicense them.
 | ttkbootstrap | MIT | ✅ Permissive, optional |
 | PyInstaller | GPL-2.0 **with bootloader exception** | ✅ The exception exists to allow proprietary frozen applications |
 
-**Every dependency is permissively licensed and safe to redistribute in a commercial
-product.** No dependency imposes copyleft, field-of-use or anti-commercial conditions.
+**Every dependency is permissively licensed and safe to redistribute in a
+commercial product.** No dependency imposes copyleft, field-of-use or
+anti-commercial conditions.
 
 Two deliberate choices behind that sentence, since they are the kind that get made
 carelessly:
 
-- **PDF support uses `pypdf` (BSD-3-Clause), not PyMuPDF.** PyMuPDF is offered under
-  AGPL-3.0 or a paid Artifex licence. A commercial licence to Proteus cannot relicense
-  somebody else's copyleft code, so a buyer would have needed a second licence from a
-  third party to ship the product — which would make the sentence above false. `pypdf` is
-  slower for some workloads and it was chosen anyway.
-- **Office packages need no library at all.** Proteus reads and writes them with the
-  Python standard library; `python-docx`, `python-pptx` and `openpyxl` are test-only and
-  are not shipped.
+- **PDF support uses `pypdf` (BSD-3-Clause), not PyMuPDF.** PyMuPDF is offered
+  under AGPL-3.0 or a paid Artifex licence. A commercial licence to Proteus cannot
+  relicense somebody else's copyleft code, so a buyer would have needed a second
+  licence from a third party to ship the product — which would make the sentence
+  above false. `pypdf` is slower for some workloads and it was chosen anyway.
+- **Office packages need no library at all.** Proteus reads and writes them with
+  the Python standard library; `python-docx`, `python-pptx` and `openpyxl` are
+  test-only and are not shipped.
 
 Verify these against the versions you actually ship. They are listed in good faith, current
 as at the version of this document, and are not a legal opinion.
