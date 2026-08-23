@@ -35,6 +35,9 @@ deliberately summarised rather than itemised.
   Nothing but comments changed — the parsed syntax tree of all 152 files is
   identical before and after, which is how that was checked rather than
   assumed.
+- `core.APP_VERSION` is **1.3.0**, matching the tag and the release. It still
+  read `1.3` after the renumbering, so `--version` and the download page
+  disagreed.
 - **`LICENSE` is now the verbatim FSF text of the AGPL-3.0.** The previous copy
   was reflowed to long lines, which the licence's own header does not permit
   ("changing it is not allowed") and which stops GitHub recognising it.
