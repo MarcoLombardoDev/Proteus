@@ -127,7 +127,11 @@ The tree holds one directory per distribution that contributed code, the
 interpreter's and Tcl/Tk's own terms — neither is a wheel, so neither has
 metadata to read and both are supplied from [`licenses/`](licenses) in this
 repository — and, on Linux, the build machine's copyright record for every
-system library collected. Which distributions those are is read out of
+system library collected. On Windows and macOS there is no such record, so the
+texts for what the platform supplies and no wheel carries are supplied the same
+way: zlib and LibTomMath, both of which arrive with Tcl rather than by anyone
+asking for them, and which the first Windows archives shipped with no notice at
+all. Which distributions those are is read out of
 PyInstaller's own record of the build rather than from a list kept by hand: a
 list like that is right the day it is written and wrong the first time a
 dependency grows a dependency.

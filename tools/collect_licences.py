@@ -91,6 +91,16 @@ ALWAYS_SUPPLIED = (
 #: its COPYING.txt comes along.
 BUILD_ONLY = {"pip", "setuptools", "wheel", "altgraph", "pyinstaller-hooks-contrib"}
 
+#: Texts for libraries the *platform* supplies rather than a package manager,
+#: and that no wheel carries either. On Linux these arrive as dpkg copyright
+#: records; on Windows and macOS nothing names them, and the first Windows
+#: archives shipped zlib and LibTomMath with no notice at all because of it.
+#: Both come with Tcl 9 rather than by anyone asking for them.
+PLATFORM_TEXTS = (
+    ("Zlib.txt", "zlib, which Tcl links"),
+    ("LibTomMath.txt", "LibTomMath, which Tcl 9 uses for bignums"),
+)
+
 #: A licence file is usually *named* like one...
 LICENCE_FILE = re.compile(r"(?i)^(licen[cs]e|copying|notice|authors)")
 
@@ -361,13 +371,26 @@ def collect(repo: str, staging: str) -> str:
     else:
         index.append(
             "This build was not produced on a Debian-family machine, so there "
-            "are no package copyright records to copy. The libraries collected "
-            "from the platform on this build are the Microsoft Visual C++ and "
-            "Universal CRT runtime (redistributable under Microsoft's own "
-            "terms, not an open-source licence), and the OpenSSL and libffi "
-            "builds that ship inside python.org's distributions — Apache-2.0 "
-            "and MIT respectively; `Apache-2.0.txt` is included here."
+            "are no package copyright records to copy. What the platform "
+            "supplies instead is named below, and the texts that are not "
+            "already in `python/` or `tcl-tk/` are here at the top level."
         )
+        index += [
+            "",
+            "- **Microsoft Visual C++ and Universal CRT runtime** (Windows) — "
+            "redistributable under Microsoft's own terms, not an open-source "
+            "licence, so there is no text to reproduce.",
+            "- **OpenSSL and libffi**, which ship inside python.org's "
+            "distributions — Apache-2.0 and MIT; `Apache-2.0.txt`.",
+        ]
+        written = ["Apache-2.0.txt"]
+        for canonical, description in PLATFORM_TEXTS:
+            source = os.path.join(repo, "licenses", canonical)
+            if not os.path.exists(source):
+                continue
+            shutil.copyfile(source, os.path.join(staging, canonical))
+            written.append(canonical)
+            index.append(f"- **{description}** — `{canonical}`.")
         shutil.copyfile(
             os.path.join(repo, "licenses", "Apache-2.0.txt"),
             os.path.join(staging, "Apache-2.0.txt"),

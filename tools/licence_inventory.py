@@ -236,11 +236,25 @@ PLATFORM_COMPONENTS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"^lib(ssl|crypto)[-.]", re.I), "OpenSSL", "Apache-2.0"),
     (re.compile(r"^libffi[-.]", re.I), "libffi", "MIT"),
     (re.compile(r"^lib(tcl|tk)\d", re.I), "Tcl/Tk", "TCL (BSD-style)"),
-    # tcl86t.dll / tk86t.dll: the trailing "t" is the threaded build, which is
-    # the one python.org ships and therefore the one in every Windows archive.
-    # Without it these came out unresolved on the platform where Tcl/Tk is not
-    # a package anybody can look up.
-    (re.compile(r"^(tcl|tk)\d+[a-z]*\.dll$", re.I), "Tcl/Tk", "TCL (BSD-style)"),
+    # Tcl/Tk names its Windows DLLs differently in every generation: 8.6 ships
+    # tcl86t.dll and tk86t.dll — the trailing "t" is the threaded build — while
+    # 9.0, which is what current python.org builds carry, ships tcl90.dll and
+    # tcl9tk90.dll. Matching "starts with tcl or tk" rather than trying to
+    # predict the numbering is the only version of this that keeps working:
+    # two patterns written for 8.6 already missed 9.0 once.
+    (re.compile(r"^(tcl|tk)[0-9a-z]*\.dll$", re.I), "Tcl/Tk", "TCL (BSD-style)"),
+    # Both arrive with Tcl 9 rather than by anyone asking for them, and both
+    # ship in the Windows archive with no package manager to name them.
+    # Their texts are vendored in licenses/ and travel with the build.
+    (re.compile(r"^zlib1\.dll$", re.I), "zlib", "Zlib"),
+    (re.compile(r"^libtommath\.dll$", re.I), "LibTomMath",
+     "public domain (the LibTom licence: 'released into the public domain')"),
+    # Ships inside python.org's Windows build for the standard library's
+    # sqlite3 module. Public domain, so unlike the others there is no notice
+    # to reproduce and no text to vendor — but "public domain" is an answer
+    # and "unresolved" is not, and the difference is what this table is for.
+    (re.compile(r"^sqlite3\.dll$", re.I), "SQLite",
+     "public domain (sqlite.org/copyright.html: 'SQLite Is Public Domain')"),
 ]
 
 #: The X.Org and XCB stacks: dozens of packages, one licence between them, all

@@ -303,3 +303,58 @@ def test_unresolved_rows_have_their_own_exit_code():
     import licence_inventory
 
     assert licence_inventory.UNRESOLVED_EXIT == 2
+
+
+class TestWindowsPlatformLibraries:
+    """The three the first Windows archives could not name.
+
+    That Python's Windows build carries Tcl/Tk **9** was the surprise: its Tk
+    DLL is `tcl9tk90.dll`, not `tk90.dll`, and a pattern written around 8.6's
+    `tcl86t.dll` matched neither. zlib and LibTomMath arrive with Tcl 9 rather
+    than by anyone asking for them, and shipped with no notice at all until
+    their texts were vendored.
+
+    None of this can be caught on Linux, where dpkg answers for all three.
+    """
+
+    @staticmethod
+    def resolve(name):
+        import licence_inventory
+
+        return licence_inventory.resolve_system(name)
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "tcl90.dll",       # Tcl 9, what current python.org builds ship
+            "tcl9tk90.dll",    # its Tk, which no 8.6-shaped pattern matches
+            "tcl86t.dll",      # Tcl 8.6 threaded, still out there
+            "tk86t.dll",
+        ],
+    )
+    def test_every_spelling_of_the_tcl_dlls_resolves(self, name):
+        component, licence, _evidence = self.resolve(name)
+        assert component == "Tcl/Tk", name
+        assert licence == "TCL (BSD-style)"
+
+    @pytest.mark.parametrize(
+        "name, component",
+        [("zlib1.dll", "zlib"), ("libtommath.dll", "LibTomMath")],
+    )
+    def test_what_tcl_drags_in_resolves_too(self, name, component):
+        found, licence, _evidence = self.resolve(name)
+        assert found == component
+        assert licence
+
+    def test_their_texts_travel_with_the_build(self):
+        """Naming a licence in a table is not reproducing its notice."""
+        import collect_licences
+
+        supplied = {name for name, _description in collect_licences.PLATFORM_TEXTS}
+        assert supplied == {"Zlib.txt", "LibTomMath.txt"}
+        for name in supplied:
+            path = REPO / "licenses" / name
+            assert path.exists(), f"licenses/{name} is missing"
+            assert "public domain" in path.read_text(encoding="utf-8").lower() or (
+                "without any express or implied" in path.read_text(encoding="utf-8")
+            ), f"licenses/{name} does not read like the licence it claims to be"
