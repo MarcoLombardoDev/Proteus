@@ -23,6 +23,11 @@ Each archive is built on that platform's own runner — no cross-compilation, no
 Unpack and run: no installation, and no Python needed. The builds are **unsigned**, so
 Windows SmartScreen and macOS Gatekeeper warn on first launch.
 
+Each archive unpacks to a folder holding the executable and a `licenses/` directory: the
+terms of everything Proteus is built on, plus an inventory of every native library in the
+build and where each licence determination came from. That inventory is generated on the
+machine that produced the archive, so it describes what you actually downloaded.
+
 Running from source instead is described in the
 [README](https://github.com/MarcoLombardoDev/Proteus/blob/{{TAG}}/README.md).
 

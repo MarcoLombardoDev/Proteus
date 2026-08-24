@@ -130,6 +130,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version",
                         version=f"{core.APP_NAME} {core.APP_TAGLINE} {core.APP_VERSION}")
 
+    # Not in a group, and not in --help's usage line either: this exists for
+    # the release workflow rather than for a user, and it is the only flag
+    # here that does not need --scan.
+    parser.add_argument("--self-check", action="store_true",
+                        help="check a built bundle can start Tk and rewrite a "
+                             "document, then exit")
+    parser.add_argument("--self-check-report", metavar="FILE",
+                        help="also write the self-check report here; a "
+                             "--windowed build has no stdout to read it from")
+
     what = parser.add_argument_group("what to scan")
     what.add_argument("--scan", metavar="FOLDER",
                       help="folder to search for files to replace")
@@ -379,6 +389,11 @@ def run_restore(args, reporter: Reporter) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.self_check:
+        import selfcheck
+
+        return selfcheck.run(args.self_check_report)
 
     i18n.set_language(args.language)
     reporter = Reporter(quiet=args.quiet, verbose=args.verbose)

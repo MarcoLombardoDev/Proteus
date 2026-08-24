@@ -154,6 +154,16 @@ class RebrandingToolBuilder:
             "PyQt5", "PyQt6", "PySide2", "PySide6",
             "jupyter", "IPython", "sphinx", "pytest",
             "win32com", "pythoncom",
+            # readline is the one exclusion here that is not about size.
+            # PyInstaller collects the stdlib's optional readline extension,
+            # which links libreadline — **GPL-3.0-or-later, with no linking
+            # exception** — and so put GPL-3 code inside an archive that
+            # COMMERCIAL-LICENSE.md offers for redistribution in closed-source
+            # products. libpython does not link it; only this module does.
+            # Nothing in Proteus reads a line from an interactive prompt, so
+            # the module was doing nothing but creating that obligation.
+            # rlcompleter goes with it: it imports readline and nothing else.
+            "readline", "rlcompleter",
         ]
 
         cmd = [

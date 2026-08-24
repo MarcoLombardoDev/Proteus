@@ -203,3 +203,107 @@ def test_the_release_body_points_at_the_licence_and_the_commercial_terms():
     body = BODY_PATH.read_text(encoding="utf-8")
     assert "AGPL-3.0" in body
     assert "COMMERCIAL-LICENSE.md" in body
+
+
+def test_the_smoke_test_actually_starts_the_toolkit():
+    """--version on its own proves nothing about Tk.
+
+    argparse's version handling prints and exits before tkinter is imported at
+    all. A bundle missing its Tcl/Tk libraries passes ``--version`` and then
+    fails the moment a user double-clicks it. The smoke test has to create a Tk
+    root, which is what makes Tcl and Tk go looking for their script
+    libraries, and it has to check which windowing system came up.
+    """
+    step = step_named(build_steps(load_workflow()), "Smoke-test the bundle")
+    assert "--self-check" in step["run"], (
+        "the smoke test never starts Tk, so it cannot detect a broken bundle"
+    )
+    assert "windowing system" in step["run"], (
+        "the smoke test does not check which windowing system was loaded"
+    )
+
+
+def test_the_smoke_test_reads_its_report_from_a_file():
+    """These bundles are built --windowed.
+
+    On Windows that means the process has no stdout: ``print`` is a no-op and
+    anything parsed from it is empty. Reading the report from a file is what
+    makes the check mean the same thing on all three platforms.
+    """
+    step = step_named(build_steps(load_workflow()), "Smoke-test the bundle")
+    assert "--self-check-report" in step["run"]
+    assert "self-check.txt" in step["run"]
+
+
+def test_the_linux_smoke_test_gets_a_display():
+    """Creating a Tk root needs one, and a build runner has none."""
+    steps = build_steps(load_workflow())
+    smoke = step_named(steps, "Smoke-test the bundle")
+    assert "xvfb-run" in smoke["run"]
+    assert "Linux:x11" in smoke["run"], "no assertion that x11 is what came up"
+
+    libraries = step_named(steps, "Install the platform's system libraries")
+    assert libraries is not None
+    assert "xvfb" in libraries["run"], (
+        "a smoke test that calls xvfb-run without xvfb fails every release"
+    )
+
+
+def test_the_licence_texts_are_collected_and_packaged():
+    """The v1 archives shipped one executable and no licence file at all."""
+    steps = build_steps(load_workflow())
+    collect = step_named(steps, "Collect the licence texts")
+    assert collect is not None, "nothing assembles the licence texts"
+    assert "tools/collect_licences.py" in collect["run"]
+
+    staged = step_named(steps, "Assemble what goes in the archive")
+    assert staged is not None
+    assert "build/licenses" in staged["run"], (
+        "the licence tree is assembled and then not packaged"
+    )
+
+
+def test_the_licences_are_collected_after_the_build():
+    """The tree describes what was built, so it cannot be assembled first."""
+    names = [step.get("name") for step in build_steps(load_workflow())]
+    assert names.index("Build") < names.index("Collect the licence texts")
+    assert names.index("Collect the licence texts") < names.index(
+        "Assemble what goes in the archive"
+    )
+
+
+def test_the_bundle_is_inventoried_on_the_machine_that_built_it():
+    """A hand-written list of a PyInstaller bundle is wrong the day after.
+
+    The contents change when the runner image changes, not when anyone edits
+    the repository, so the inventory has to be generated per build and travel
+    with the archive.
+    """
+    steps = build_steps(load_workflow())
+    inventory = step_named(steps, "Inventory what the bundle ships")
+    assert inventory is not None
+    assert "tools/licence_inventory.py" in inventory["run"]
+    assert "build/licenses/THIRD-PARTY-LICENSES-" in inventory["run"], (
+        "the inventory is generated somewhere the archive will not carry it"
+    )
+
+
+def test_an_unattributed_binary_warns_rather_than_failing_the_release():
+    """Blocking a release on an unresolved row would only encourage guessing.
+
+    The report already says "unresolved", which is the honest answer; what is
+    needed is that somebody sees it.
+    """
+    step = step_named(build_steps(load_workflow()), "Inventory what the bundle ships")
+    assert "::warning::" in step["run"]
+
+
+def test_the_archive_carries_the_licences_beside_the_binary():
+    """--onefile has no bundle directory: anything added to the bundle is
+    sealed inside the executable, where a licence text does nothing.
+    """
+    step = step_named(build_steps(load_workflow()), "Package")
+    assert "STAGED" in step["run"], (
+        "the archive is built from the bare payload again, so it contains no "
+        "licence files"
+    )

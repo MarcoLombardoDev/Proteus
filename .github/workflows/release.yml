@@ -161,8 +161,11 @@ jobs:
           # tkinter is a separate OS package on Debian/Ubuntu. The interpreter
           # actions/setup-python installs ships _tkinter.so, but it is linked
           # against libtcl/libtk, which arrive with python3-tk.
+          #
+          # xvfb is for the smoke test: starting Tk needs a display, and a
+          # build runner has none.
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends python3-tk
+          sudo apt-get install -y --no-install-recommends python3-tk xvfb
 
       - name: Install dependencies
         run: |
@@ -173,6 +176,36 @@ jobs:
 
       - name: Build
         run: python build.py
+
+      # The v1 archives shipped one executable and no licence file at all.
+      # A recursive search of all three for LICENSE, COPYING or NOTICE
+      # returned nothing, which the BSD and MIT libraries frozen into that
+      # executable require, and which the LGPL-2.1 system libraries collected
+      # on Linux require in stronger terms still.
+      #
+      # Run here rather than from the .spec file because these are --onefile
+      # builds: anything added to the bundle ends up sealed inside the
+      # executable, visible only to somebody who has already run it. The tree
+      # is packaged beside the binary instead.
+      - name: Collect the licence texts
+        shell: bash
+        run: python tools/collect_licences.py build/licenses
+
+      # What the archive actually contains, generated on the machine that
+      # built it. A hand-written list would be wrong the first time the runner
+      # image changed, and nobody would notice.
+      #
+      # A non-zero exit means some binary could not be attributed. That is
+      # worth seeing, and worth seeing as a warning rather than as a failed
+      # release: the report still lists it as unresolved, which is the honest
+      # answer, and blocking a release on it would only encourage guessing.
+      - name: Inventory what the bundle ships
+        shell: bash
+        run: |
+          python tools/licence_inventory.py \
+            --bundle "${{ matrix.asset }}=build/$APP_NAME" \
+            --markdown "build/licenses/THIRD-PARTY-LICENSES-${{ matrix.asset }}.md" \
+            || echo "::warning::some binaries could not be attributed; see the report"
 
       # Where the build put its output, and which file inside it is the
       # program. Decided once, here, so the smoke test and the packaging step
@@ -204,9 +237,20 @@ jobs:
           echo "bin=$bin" >> "$GITHUB_OUTPUT"
 
       # A bundle that cannot start is worse than no bundle, so it is run
-      # before it is offered for download. --version is enough: it exercises
-      # the frozen interpreter, the bundled standard library and the app's own
-      # entry point, and it returns without needing a display.
+      # before it is offered for download.
+      #
+      # --version alone is not a smoke test. argparse prints the version and
+      # exits before the toolkit is imported, so it proves the frozen
+      # interpreter and the bundled standard library work and nothing else: a
+      # bundle whose Tcl/Tk libraries were not collected passes it, and a
+      # bundle that cannot save a file passes it too. --self-check starts Tk
+      # for real, reports which windowing system it came up on, and writes and
+      # reads back a file through the product's own code.
+      #
+      # The report is read from a file rather than from stdout because these
+      # bundles are built --windowed: on Windows the process has no stdout at
+      # all, so parsing it would check nothing on the one platform whose
+      # bundle is least like the machine that built it.
       - name: Smoke-test the bundle
         shell: bash
         env:
@@ -214,15 +258,50 @@ jobs:
         run: |
           chmod +x "$BIN" 2>/dev/null || true
           "$BIN" --version
+
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            # Under a virtual X server, so Tk loads the real x11 backend.
+            xvfb-run -a "$BIN" --self-check --self-check-report self-check.txt
+          else
+            "$BIN" --self-check --self-check-report self-check.txt
+          fi
+          cat self-check.txt
+
+          backend=$(sed -n 's/^windowing system: //p' self-check.txt)
+          case "$RUNNER_OS:$backend" in
+            Linux:x11|macOS:aqua|Windows:win32) ;;
+            *)
+              echo "::error::$RUNNER_OS bundle came up on windowing system '$backend'"
+              exit 1
+              ;;
+          esac
           # Proteus is a GUI *and* a command line in one binary, so the CLI
           # half is smoke-tested too.
           "$BIN" --help > /dev/null
+
+      # The archive is a folder now, not a bare executable: the licence texts
+      # have to travel with the binary, and a folder is the only way to put
+      # them where somebody who unpacks the download will see them.
+      - name: Assemble what goes in the archive
+        id: staged
+        shell: bash
+        env:
+          PAYLOAD: ${{ steps.built.outputs.payload }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          staged="staging/$APP_NAME-$VERSION-${{ matrix.asset }}"
+          rm -rf staging
+          mkdir -p "$staged"
+          cp -R "$PAYLOAD" "$staged/"
+          cp -R build/licenses "$staged/licenses"
+          ls -la "$staged"
+          echo "dir=$staged" >> "$GITHUB_OUTPUT"
 
       - name: Package
         id: package
         shell: bash
         env:
-          PAYLOAD: ${{ steps.built.outputs.payload }}
+          STAGED: ${{ steps.staged.outputs.dir }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           base="$APP_NAME-$VERSION-${{ matrix.asset }}"
@@ -230,20 +309,20 @@ jobs:
             Windows)
               name="$base.zip"
               # 7z ships on the Windows runner image and, unlike
-              # Compress-Archive, keeps the top-level folder for a directory
-              # payload — so every platform's archive unpacks the same way.
-              7z a -tzip "$name" "$PAYLOAD" > /dev/null
+              # Compress-Archive, keeps the top-level folder — so every
+              # platform's archive unpacks the same way.
+              7z a -tzip "$name" "$STAGED" > /dev/null
               ;;
             macOS)
               name="$base.zip"
               # ditto keeps the symlinks and permission bits inside a .app
               # bundle; zip flattens them and a flattened bundle will not
               # launch.
-              ditto -c -k --keepParent "$PAYLOAD" "$name"
+              ditto -c -k --keepParent "$STAGED" "$name"
               ;;
             *)
               name="$base.tar.gz"
-              tar -czf "$name" -C "$(dirname "$PAYLOAD")" "$(basename "$PAYLOAD")"
+              tar -czf "$name" -C "$(dirname "$STAGED")" "$(basename "$STAGED")"
               ;;
           esac
           echo "name=$name" >> "$GITHUB_OUTPUT"

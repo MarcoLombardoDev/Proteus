@@ -393,3 +393,89 @@ def test_the_documented_dev_dependencies_cover_the_docs_tooling():
 
     if "import mss" in generator:
         assert "mss" in declared, "docs/generate_screenshots.py needs mss"
+
+
+class TestThirdPartySection:
+    """§11 is what a buyer reads before signing, so it has to be true.
+
+    What it said before was a table of the source dependencies with a column
+    headed "Commercial redistribution" and a ✅ in every row, under the
+    sentence "Every dependency is permissively licensed and safe to
+    redistribute in a commercial product."
+
+    Both halves were wrong. A tick reads as permission granted, in the one
+    section whose whole job is to say that no rights to third-party components
+    are granted here. And `requirements.txt` is not what a redistributor
+    ships: they ship a frozen bundle of 72 native libraries, one of which
+    was GPL-3.0 readline.
+    """
+
+    @pytest.fixture(scope="class")
+    def section(self) -> str:
+        terms = read("COMMERCIAL-LICENSE.md")
+        return terms[
+            terms.index("## 11. Third-party components"):terms.index("## 12. Contributors")
+        ]
+
+    def test_it_distinguishes_the_source_dependencies_from_the_shipped_bundle(
+        self, section: str
+    ) -> None:
+        """A redistributor ships the bundle, not requirements.txt."""
+        assert "source" in section.lower()
+        assert "THIRD-PARTY-LICENSES.md" in section, (
+            "§11 does not point at the full inventory, so it remains a summary "
+            "of a handful of components presented as the whole picture"
+        )
+
+    def test_no_component_is_marked_simply_permitted(self, section: str) -> None:
+        """The old table's ✅ column invited exactly the wrong conclusion."""
+        assert "✅" not in section, (
+            "a tick in §11 reads as permission granted; this section grants none"
+        )
+
+    def test_the_licensing_history_is_stated_and_not_softened(
+        self, section: str
+    ) -> None:
+        """The decision that shaped the dependency list, in the document people
+        pay against. A buyer who learns it after paying has bought the wrong
+        thing.
+        """
+        lowered = section.lower()
+        assert "pymupdf" in lowered
+        assert "artifex" in lowered
+
+    @pytest.mark.parametrize(
+        "obligation",
+        [
+            # Each of these is carried by something the archives actually
+            # contain, and none was in the table this replaced.
+            "GCC Runtime Library Exception",
+            "Microsoft",
+            "Bootloader Exception",
+            "Tcl and Tk",
+        ],
+    )
+    def test_obligations_carried_by_the_bundle_are_named(
+        self, section: str, obligation: str
+    ) -> None:
+        assert obligation in section
+
+    def test_the_gpl3_library_that_used_to_ship_is_disclosed(
+        self, section: str
+    ) -> None:
+        """Removed from the build, and said out loud rather than quietly fixed.
+
+        Somebody holding an older archive still has it, and §11 is where they
+        would look.
+        """
+        assert "libreadline" in section
+        assert "no linking exception" in section
+
+    def test_it_still_disclaims_being_a_legal_opinion(self, section: str) -> None:
+        """More detail is not more authority."""
+        assert "not a legal opinion" in section.lower()
+
+
+def test_the_inventory_document_is_reachable_from_the_licence():
+    """A pointer to a file nobody links is a pointer to nothing."""
+    assert "THIRD-PARTY-LICENSES.md" in read("README.md")
