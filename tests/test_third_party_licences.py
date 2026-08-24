@@ -248,3 +248,58 @@ class TestBundleClassifier:
         licence, evidence = licence_inventory.licence_for_package("libx11-6")
         assert licence == "MIT"
         assert "X.Org" in evidence
+
+
+class TestRunsWithoutDpkg:
+    """Two of the three release runners have no package database at all.
+
+    This is where the first release run broke: ``subprocess.run`` raises
+    FileNotFoundError when the executable is missing rather than returning
+    non-zero, so the script died on Windows and macOS instead of reporting
+    what it could not resolve.
+    """
+
+    def test_the_dpkg_lookup_is_guarded(self):
+        import licence_inventory
+
+        assert hasattr(licence_inventory, "HAS_DPKG")
+
+    def test_it_returns_nothing_rather_than_raising(self, monkeypatch):
+        import licence_inventory
+
+        monkeypatch.setattr(licence_inventory, "HAS_DPKG", False)
+        assert licence_inventory.dpkg_owner("libz.so.1") is None
+
+    def test_the_platform_libraries_still_resolve(self, monkeypatch):
+        """What a Windows or macOS bundle is mostly made of is named by
+        pattern rather than by package, so it resolves with no dpkg at all.
+        """
+        import licence_inventory
+
+        monkeypatch.setattr(licence_inventory, "HAS_DPKG", False)
+        for name, expected in (
+            ("VCRUNTIME140.dll", "Microsoft Visual C++ / Universal CRT runtime"),
+            ("libcrypto.3.dylib", "OpenSSL"),
+            ("libtcl8.6.dylib", "Tcl/Tk"),
+            ("tcl86t.dll", "Tcl/Tk"),
+        ):
+            component, licence, _evidence = licence_inventory.resolve_system(name)
+            assert component == expected, name
+            assert licence, name
+
+    def test_anything_else_is_reported_unresolved_not_guessed(self, monkeypatch):
+        import licence_inventory
+
+        monkeypatch.setattr(licence_inventory, "HAS_DPKG", False)
+        component, licence, _evidence = licence_inventory.resolve_system("libmystery.so.1")
+        assert component == "unknown"
+        assert licence is None
+
+
+def test_unresolved_rows_have_their_own_exit_code():
+    """A caller has to be able to tell a script that finished with gaps from a
+    script that died. An uncaught exception exits 1, so 1 cannot mean either.
+    """
+    import licence_inventory
+
+    assert licence_inventory.UNRESOLVED_EXIT == 2

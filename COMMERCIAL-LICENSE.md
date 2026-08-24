@@ -409,7 +409,7 @@ contains the transitive closure of everything those packages link — the
 libraries the wheels vendor, the interpreter and its extension modules, Tcl and
 Tk, and whatever else the build machine's linker resolved.
 
-A Linux build contains **72 native binaries**. Every one of them is
+A Linux build contains **102 native binaries**. Every one of them is
 inventoried, with the source of each licence determination, in
 **[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)**, and the licence texts
 themselves now ship inside the archive as `licenses/` — together with a copy of

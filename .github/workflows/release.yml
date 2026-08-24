@@ -202,10 +202,25 @@ jobs:
       - name: Inventory what the bundle ships
         shell: bash
         run: |
+          set +e
           python tools/licence_inventory.py \
             --bundle "${{ matrix.asset }}=build/$APP_NAME" \
-            --markdown "build/licenses/THIRD-PARTY-LICENSES-${{ matrix.asset }}.md" \
-            || echo "::warning::some binaries could not be attributed; see the report"
+            --markdown "build/licenses/THIRD-PARTY-LICENSES-${{ matrix.asset }}.md"
+          status=$?
+          set -e
+
+          # 2 means the report was written and some rows in it need a human.
+          # Anything else means the script did not finish, and the archive
+          # would ship without the inventory it is supposed to carry. The
+          # first release run swallowed exactly that: the script raised on
+          # every machine without dpkg, `|| echo ::warning::` turned the crash
+          # into a warning, and Windows and macOS published without it.
+          case "$status" in
+            0) ;;
+            2) echo "::warning::some binaries could not be attributed; see the report" ;;
+            *) echo "::error::the inventory script exited $status without writing a report"
+               exit "$status" ;;
+          esac
 
       # Where the build put its output, and which file inside it is the
       # program. Decided once, here, so the smoke test and the packaging step
@@ -309,9 +324,14 @@ jobs:
             Windows)
               name="$base.zip"
               # 7z ships on the Windows runner image and, unlike
-              # Compress-Archive, keeps the top-level folder — so every
-              # platform's archive unpacks the same way.
-              7z a -tzip "$name" "$STAGED" > /dev/null
+              # Compress-Archive, keeps the top-level folder. It keeps the
+              # *whole path* it is given, though: called on staging/<base> it
+              # produced an archive that unpacked to staging/<base>/, one
+              # level deeper than the other two platforms. Run from inside the
+              # staging directory instead, so all three archives unpack the
+              # same way.
+              ( cd "$(dirname "$STAGED")" \
+                  && 7z a -tzip "../$name" "$(basename "$STAGED")" > /dev/null )
               ;;
             macOS)
               name="$base.zip"

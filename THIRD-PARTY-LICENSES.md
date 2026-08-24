@@ -5,7 +5,7 @@ commercial licence available separately (see
 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)). That covers the code in this
 repository. It does not cover the code Proteus is built on, and a
 downloadable release is mostly that other code: a Linux build contains
-72 native binaries and not one of them was written for Proteus.
+102 native binaries and not one of them was written for Proteus.
 Proteus's own code travels through them as Python bytecode.
 
 This file is the inventory of what those binaries are and what licenses them.
@@ -14,8 +14,11 @@ This file is the inventory of what those binaries are and what licenses them.
 
 It was generated, not written from memory, by
 [`tools/licence_inventory.py`](tools/licence_inventory.py) run against
-a real build of the current source, on Ubuntu 24.04 —
-the same family as the release runner — and not against the source tree. That distinction matters:
+the published `Proteus-1.3.0-linux-x64.tar.gz`. The table
+below is literally the copy the release runner generated and packaged inside
+that archive as `licenses/THIRD-PARTY-LICENSES-linux-x64.md`, lifted out of it
+unchanged — so it describes the file somebody downloads rather than a build
+that resembles it. That distinction matters:
 PyInstaller collects whatever the build machine's linker resolved, so the
 contents change when the runner image changes, not when someone edits this
 repository. A hand-maintained list would be stale within one CI image bump and
@@ -135,11 +138,11 @@ Counts are files, not projects: one project usually contributes several
 binaries. "Evidence" names where the licence came from, so any line here can be
 re-checked rather than taken on trust.
 
-### Linux — 72 native binaries
+### Linux — 102 native binaries
 
 | Component | Files | Licence | Evidence |
 |---|---|---|---|
-| `CPython` (cpython) | 21 | PSF-2.0 | the Python Software Foundation License, version 2 |
+| `CPython` (cpython) | 51 | PSF-2.0 | the Python Software Foundation License, version 2 |
 | `libbrotli1` (system) | 2 | MIT | debian/copyright, Files: * stanza |
 | `libbsd0` (system) | 1 | BSD-3-Clause AND BSD-2-Clause AND ISC | reviewed: per-file stanzas, all permissive BSD/ISC variants |
 | `libbz2-1.0` (system) | 1 | bzip2-1.0.6 | debian/copyright, Files: * stanza |
@@ -155,6 +158,7 @@ re-checked rather than taken on trust.
 | `libstdc++6` (system) | 1 | GPL-3.0-or-later WITH GCC-exception-3.1 | free-form copyright: 'version 3.1 of the GCC Runtime Library Exception' |
 | `libtcl8.6` (system) | 1 | TCL (BSD-style) | free-form copyright: 'This software is copyrighted by the Regents of the University of California, Sun Microsystems, Inc., Scriptics Corporation' |
 | `libtk8.6` (system) | 1 | TCL (BSD-style) | free-form copyright: 'This software is copyrighted by the Regents of the University of California, Sun Microsystems, Inc.' |
+| `libuuid1` (system) | 1 | BSD-3-Clause | reviewed: Files: libuuid/* — default stanza says GPL-2+ |
 | `libx11-6` (system) | 1 | MIT | free-form copyright: X.Org / XCB standard copyright — MIT/X11 permission notice |
 | `libxau6` (system) | 1 | MIT | free-form copyright: X.Org / XCB standard copyright — MIT/X11 permission notice |
 | `libxdmcp6` (system) | 1 | MIT | free-form copyright: X.Org / XCB standard copyright — MIT/X11 permission notice |
@@ -162,7 +166,6 @@ re-checked rather than taken on trust.
 | `libxft2` (system) | 1 | MIT | free-form copyright: X.Org / XCB standard copyright — MIT/X11 permission notice |
 | `libxrender1` (system) | 1 | MIT | free-form copyright: X.Org / XCB standard copyright — MIT/X11 permission notice |
 | `libxss1` (system) | 1 | MIT | free-form copyright: X.Org / XCB standard copyright — MIT/X11 permission notice |
-| `tk8.6-blt2.5` (system) | 1 | MIT | free-form copyright: Files: * — License: MIT-1 (Lucent Technologies), in a copyright file with no Format: header |
 | `zlib1g` (system) | 1 | Zlib | debian/copyright, Files: * stanza |
 | `pillow` (wheel) | 25 | MIT-CMU | the wheel's own distribution metadata |
 

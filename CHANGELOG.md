@@ -52,7 +52,7 @@ deliberately summarised rather than itemised.
   It was a table of `requirements.txt` with a column headed "Commercial
   redistribution" and a ✅ in every row — a tick, in the one section whose job
   is to say that no rights to third-party components are granted here. What a
-  redistributor actually ships is a frozen bundle of 72 native libraries,
+  redistributor actually ships is a frozen bundle of 102 native libraries,
   most of which no requirements file mentions. The section now separates the
   two, names the obligations the bundle really carries, and points at the
   inventory.
@@ -85,6 +85,24 @@ deliberately summarised rather than itemised.
   `Proteus.exe`.
 
 ### Fixed
+- **The per-platform inventory was missing from the Windows and macOS
+  archives.** `tools/licence_inventory.py` called `dpkg-query` unguarded, and
+  `subprocess.run` *raises* on a missing executable rather than returning
+  non-zero — so it died outright on the two runners that have no package
+  database, and the workflow's `|| echo "::warning::"` turned the crash into a
+  warning nobody read. The lookup is guarded now, the script has its own exit
+  code for "the report was written and some rows need a human", and the
+  workflow fails the step on anything else. Found by opening the published
+  archives rather than by reading the green tick.
+- **The Windows archive unpacked one level too deep.** `7z` stores the whole
+  path it is given, so `7z a staging/<base>` produced an archive containing
+  `staging/<base>/` while tar and ditto produced `<base>/`. It is now run from
+  inside the staging directory, and a test pins the command shape.
+- **Tcl/Tk went unrecognised on Windows.** The DLLs python.org ships are
+  `tcl86t.dll` and `tk86t.dll` — the trailing `t` is the threaded build — and
+  the pattern that names them required the digits to be followed straight by
+  `.dll`. They were reported unresolved on the one platform where Tcl/Tk
+  belongs to no package manager.
 - **A GPL-3.0 library was being shipped inside archives offered for commercial
   redistribution.** PyInstaller collects the standard library's optional
   `readline` extension by default, and it links `libreadline` —

@@ -76,11 +76,20 @@ import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
 
 APP_NAME = "Proteus"
+
+#: Exit code for "the report was written, and some rows in it need a human".
+#: Deliberately not 1: an uncaught exception exits 1 too, and a caller that
+#: cannot tell the two apart treats a script that *died* as a script that
+#: merely found something unattributable. That is not a hypothetical — the
+#: v1 release workflow did exactly that, and two archives shipped with no
+#: inventory in them while the log said "warning".
+UNRESOLVED_EXIT = 2
 
 #: Wheel-vendored libraries carry an eight-hex-digit tag inserted by auditwheel
 #: so two wheels can vendor different builds of the same library without
@@ -227,7 +236,11 @@ PLATFORM_COMPONENTS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"^lib(ssl|crypto)[-.]", re.I), "OpenSSL", "Apache-2.0"),
     (re.compile(r"^libffi[-.]", re.I), "libffi", "MIT"),
     (re.compile(r"^lib(tcl|tk)\d", re.I), "Tcl/Tk", "TCL (BSD-style)"),
-    (re.compile(r"^(tcl|tk)\d+\.dll$", re.I), "Tcl/Tk", "TCL (BSD-style)"),
+    # tcl86t.dll / tk86t.dll: the trailing "t" is the threaded build, which is
+    # the one python.org ships and therefore the one in every Windows archive.
+    # Without it these came out unresolved on the platform where Tcl/Tk is not
+    # a package anybody can look up.
+    (re.compile(r"^(tcl|tk)\d+[a-z]*\.dll$", re.I), "Tcl/Tk", "TCL (BSD-style)"),
 ]
 
 #: The X.Org and XCB stacks: dozens of packages, one licence between them, all
@@ -380,8 +393,24 @@ def classify(rel: str, owners: dict[str, str]) -> tuple[str, str] | None:
     return "system", ""
 
 
+#: Whether the build machine can be asked which package owns a library. Only a
+#: Debian-family one can. Checked once, and checked at all because
+#: ``subprocess.run`` *raises* on a missing executable rather than returning
+#: non-zero: without this the script died outright on the Windows and macOS
+#: runners, and the release published two archives with no inventory in them.
+HAS_DPKG = shutil.which("dpkg-query") is not None
+
+
 def dpkg_owner(basename: str) -> str | None:
-    """Ask dpkg which package owns a library, trying shorter sonames first."""
+    """Ask dpkg which package owns a library, trying shorter sonames first.
+
+    ``None`` everywhere dpkg does not exist, which is every Windows and macOS
+    build. The caller falls back to PLATFORM_COMPONENTS, and whatever that
+    does not name is reported unresolved — which is the honest answer for a
+    machine with no package database to consult.
+    """
+    if not HAS_DPKG:
+        return None
     candidates = [basename]
     trimmed = re.match(r"^(.*\.so\.\d+)\.", basename)
     if trimmed:
@@ -532,7 +561,8 @@ def take_inventory(platform: str, root: str) -> Inventory:
         if origin == "system":
             # Prefer the real source path when there is one: dpkg answers
             # exactly rather than by matching a name it may not recognise.
-            if source and "site-packages" not in source and os.path.exists(source):
+            if (HAS_DPKG and source and "site-packages" not in source
+                    and os.path.exists(source)):
                 found = subprocess.run(
                     ["dpkg-query", "-S", os.path.realpath(source)],
                     capture_output=True,
@@ -662,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dump(payload, handle, indent=1, sort_keys=True)
         print(f"wrote {args.json}")
 
-    return 1 if any(inv.unresolved for inv in inventories) else 0
+    return UNRESOLVED_EXIT if any(inv.unresolved for inv in inventories) else 0
 
 
 if __name__ == "__main__":

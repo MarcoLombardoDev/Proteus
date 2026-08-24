@@ -406,7 +406,7 @@ class TestThirdPartySection:
     Both halves were wrong. A tick reads as permission granted, in the one
     section whose whole job is to say that no rights to third-party components
     are granted here. And `requirements.txt` is not what a redistributor
-    ships: they ship a frozen bundle of 72 native libraries, one of which
+    ships: they ship a frozen bundle of 102 native libraries, one of which
     was GPL-3.0 readline.
     """
 

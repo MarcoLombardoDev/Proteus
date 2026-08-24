@@ -307,3 +307,39 @@ def test_the_archive_carries_the_licences_beside_the_binary():
         "the archive is built from the bare payload again, so it contains no "
         "licence files"
     )
+
+
+def test_a_crashing_inventory_fails_the_step_rather_than_warning():
+    """The first release run shipped two archives with no inventory in them.
+
+    The script raised FileNotFoundError on every machine without dpkg — which
+    is every Windows and macOS runner — and `|| echo "::warning::"` turned the
+    crash into a warning nobody reads. Exit 1 cannot be the signal for
+    "some rows need a human", because an uncaught Python exception exits 1 as
+    well; the script uses 2 for that, and anything else has to fail the step.
+    """
+    step = step_named(build_steps(load_workflow()), "Inventory what the bundle ships")
+    assert "::warning::" in step["run"]
+    assert "::error::" in step["run"], (
+        "nothing distinguishes a crash from an unattributed binary, so a crash "
+        "publishes an archive with no inventory in it"
+    )
+    assert "2)" in step["run"], "the warning is not tied to the script's own exit code"
+    assert 'exit "$status"' in step["run"]
+
+
+def test_the_windows_archive_does_not_carry_the_staging_directory():
+    """7z stores the path it is given, not just the last component.
+
+    Called on staging/<base> it produced an archive unpacking to
+    staging/<base>/, one level deeper than the tar and ditto archives — which
+    is what v1 shipped. Running it from inside the staging directory is what
+    makes all three unpack the same way.
+    """
+    step = step_named(build_steps(load_workflow()), "Package")
+    windows = step["run"].split("Windows)")[1].split(";;")[0]
+    assert '7z a -tzip "$name" "$STAGED"' not in windows, (
+        "7z is passed the staging path, so the archive gains a staging/ level"
+    )
+    assert 'cd "$(dirname "$STAGED")"' in windows
+    assert '"$(basename "$STAGED")"' in windows

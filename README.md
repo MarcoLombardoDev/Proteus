@@ -1111,7 +1111,7 @@ review: **[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)**.
 > ⚠️ **Every *source* dependency is permissively licensed** — PDF support uses
 > `pypdf` (BSD-3-Clause) rather than PyMuPDF (AGPL / Artifex commercial), and
 > Office packages are read and written with the standard library alone. A
-> downloadable build is a different question: it is a frozen bundle of 72 native
+> downloadable build is a different question: it is a frozen bundle of 102 native
 > libraries, most of which no `requirements.txt` mentions. All of them are
 > inventoried, with the evidence for each licence, in
 > [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md), and the licence texts ship
