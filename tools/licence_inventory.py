@@ -233,6 +233,13 @@ PLATFORM_COMPONENTS: list[tuple[re.Pattern[str], str, str]] = [
         "Microsoft Visual C++ / Universal CRT runtime",
         "Microsoft redistributable terms — not an open-source licence",
     ),
+    # The MFC runtime, which pywin32 ships for win32ui. Same legal basis as
+    # the row above and a different file, so it needs saying separately.
+    (
+        re.compile(r"^mfc\d+u?\.dll$", re.I),
+        "Microsoft Foundation Class runtime",
+        "Microsoft redistributable terms — not an open-source licence",
+    ),
     (re.compile(r"^lib(ssl|crypto)[-.]", re.I), "OpenSSL", "Apache-2.0"),
     (re.compile(r"^libffi[-.]", re.I), "libffi", "MIT"),
     (re.compile(r"^lib(tcl|tk)\d", re.I), "Tcl/Tk", "TCL (BSD-style)"),
@@ -372,8 +379,13 @@ def classify(rel: str, owners: dict[str, str]) -> tuple[str, str] | None:
     """
     if not is_native(rel):
         return None
-    base = os.path.basename(rel)
-    lower = rel.replace("\\", "/").lower()
+    # Normalise first, then take the file name from the normalised path.
+    # os.path.basename does not split on a backslash when it runs on Linux,
+    # and these paths come out of a Windows bundle read on a Linux machine, so
+    # deriving the name from the raw string returns the whole path.
+    normalised = rel.replace("\\", "/")
+    base = normalised.split("/")[-1]
+    lower = normalised.lower()
 
     if (
         base.startswith(("libpython3", "python3"))
@@ -401,6 +413,23 @@ def classify(rel: str, owners: dict[str, str]) -> tuple[str, str] | None:
         # appended; everything else sits inside its own package directory.
         head = re.sub(r"\.(libs|dylibs)$", "", lower.split("/")[0])
         for candidate in (head, head.replace("-", "_"), head.replace("_", "-")):
+            owner = owners.get(candidate)
+            if owner:
+                return "wheel", owner
+
+        # A directory that names no distribution is not the end of it. pywin32
+        # declares its *modules* as top level — win32api, pythoncom, win32ui —
+        # and not the directories it installs them into: its top_level.txt has
+        # no entry for `win32` or `pywin32_system32` at all. So the folder
+        # answers nothing and the file name answers everything, and eight
+        # binaries in every Windows archive came out unknown because only the
+        # folder was ever asked.
+        #
+        # The second candidate drops a trailing version number, which is how
+        # pywin32 names the two DLLs that carry the interpreter's ABI:
+        # pythoncom312.dll is the module pythoncom.
+        stem = base.split(".")[0].lower()
+        for candidate in (stem, re.sub(r"\d+$", "", stem)):
             owner = owners.get(candidate)
             if owner:
                 return "wheel", owner

@@ -358,3 +358,74 @@ class TestWindowsPlatformLibraries:
             assert "public domain" in path.read_text(encoding="utf-8").lower() or (
                 "without any express or implied" in path.read_text(encoding="utf-8")
             ), f"licenses/{name} does not read like the licence it claims to be"
+
+
+class TestPywin32:
+    """The distribution whose folders name nothing.
+
+    pywin32 declares its *modules* as top level — win32api, pythoncom,
+    win32ui — and not the directories it installs them into: its own
+    top_level.txt has no entry for `win32` or `pywin32_system32`. A classifier
+    that only asks the folder therefore learns nothing about eight binaries in
+    every Windows archive, which is exactly what happened.
+
+    Its licence texts were in the archive throughout — collect_licences.py
+    resolves distributions from PyInstaller's module list, which does not have
+    this blind spot — so what was missing was the inventory naming them, not
+    the notices themselves.
+    """
+
+    #: What packages_distributions() reports on a machine with pywin32
+    #: installed: module names, not the folders holding them.
+    owners = {
+        "win32api": "pywin32",
+        "win32event": "pywin32",
+        "win32trace": "pywin32",
+        "_win32sysloader": "pywin32",
+        "win32ui": "pywin32",
+        "pythonwin": "pywin32",
+        "pythoncom": "pywin32",
+        "pywintypes": "pywin32",
+    }
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "win32/win32api.pyd",
+            "win32/win32event.pyd",
+            "win32/win32trace.pyd",
+            "win32/_win32sysloader.pyd",
+            "pythonwin/win32ui.pyd",
+        ],
+    )
+    def test_a_module_inside_an_unnamed_folder_is_still_attributed(self, path):
+        import licence_inventory
+
+        assert licence_inventory.classify(path, self.owners) == ("wheel", "pywin32")
+
+    @pytest.mark.parametrize(
+        "path", ["pywin32_system32/pythoncom312.dll", "pywin32_system32/pywintypes312.dll"]
+    )
+    def test_the_abi_versioned_dlls_are_attributed(self, path):
+        """pythoncom312.dll is the module pythoncom with the interpreter's ABI
+        stuck on the end; nothing declares the name with the number in it."""
+        import licence_inventory
+
+        assert licence_inventory.classify(path, self.owners) == ("wheel", "pywin32")
+
+    def test_a_windows_path_classifies_the_same_as_a_posix_one(self):
+        """These paths are read out of a Windows bundle, often on Linux, where
+        os.path.basename does not split on a backslash and quietly returns the
+        whole path."""
+        import licence_inventory
+
+        assert licence_inventory.classify(
+            "win32\\win32api.pyd", self.owners
+        ) == ("wheel", "pywin32")
+
+    def test_the_mfc_runtime_pywin32_ships_is_named(self):
+        import licence_inventory
+
+        component, licence, _evidence = licence_inventory.resolve_system("mfc140u.dll")
+        assert component == "Microsoft Foundation Class runtime"
+        assert "Microsoft" in licence
