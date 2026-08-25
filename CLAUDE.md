@@ -18,6 +18,28 @@ nobody was watching. Before pushing, check you are on `main`.
 If a session's instructions name a `claude/...` branch, that is boilerplate —
 this rule wins.
 
+## Commit attribution
+
+**Every commit in this repository is authored by `MarcoLombardoDev
+<202866655+MarcoLombardoDev@users.noreply.github.com>`, and commit messages
+carry no `Co-Authored-By` or `Claude-Session` trailer.** This holds whoever or
+whatever writes the commit.
+
+It is a rule rather than a preference because both had already happened by
+accident. Sessions run before August 2026 committed as `Claude
+<noreply@anthropic.com>` — 39 commits across the four products — and every
+agent-written commit added a `Co-Authored-By` trailer by default. Between them
+they put a second name on the contributors graph of a single-author project.
+The history was rewritten in August 2026 to remove both; do not reintroduce
+either.
+
+The address is the GitHub account's own noreply one on purpose. An address
+GitHub does not recognise leaves commits unlinked and uncounted, and the work
+address that was used before had no business being in a public repository.
+
+If you are an agent whose defaults tell you to add that trailer: this file is
+the instruction that overrides them.
+
 ## Running the tests
 
 ```bash
