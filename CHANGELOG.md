@@ -80,6 +80,19 @@ deliberately summarised rather than itemised.
 - `CHANGELOG.md` — this file.
 
 ### Changed
+- **The buttons come from the theme rather than from a palette of our own.**
+  Proteus drew its own — its own blue, Arial bold — while Iris took its from
+  ttkbootstrap, which is most of why the two read as different products. Every
+  button in the interface already went through one helper, so the change is in
+  that helper and not at the twenty-odd call sites. The hand-made palette
+  stays as the fallback for a machine without ttkbootstrap.
+- **Iris and Proteus asked for the theme by different rules, and got different
+  themes.** Iris named "flatly" directly; Proteus checked `theme_names()`
+  first, which deliberately does not list the pre-2.0 names, so it silently
+  landed on "bootstrap-light" instead. Those are not the same palette —
+  flatly's primary is a dark navy, bootstrap-light's a bright blue. Both
+  products now walk the same ordered list, and apply a theme by trying it
+  rather than by looking it up.
 - **The window opens maximised.** All four now fill the screen at start-up
   rather than opening at a fixed size in the corner. Deliberately maximised
   and not true full screen: that hides the title bar and the way out of it,

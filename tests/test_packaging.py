@@ -328,3 +328,106 @@ class TestStartsMaximised:
                 return boom
 
         maximise(Hopeless())      # must simply return
+
+
+class TestLooksLikeTheOthers:
+    """Iris and Proteus share a toolkit, a theme and a set of button styles.
+
+    They did not. Both used ttkbootstrap, but Iris took its buttons from the
+    theme and Proteus drew its own — its own blue, Arial bold, square corners
+    — so the two read as different products. And the theme names were chosen
+    by different rules: Iris asked for "flatly" directly, Proteus checked
+    ``theme_names()`` first, which does not list the legacy names, so it
+    silently landed on "bootstrap-light" instead. Those are not the same
+    palette: flatly's primary is a dark navy, bootstrap-light's a bright blue.
+    """
+
+    #: The same tuple, in the same order, is in the other product. If one of
+    #: them is edited, this is what should make it obvious that the other has
+    #: to be edited too.
+    PREFERENCE = ("flatly", "bootstrap-light", "litera", "cosmo")
+
+    def test_the_theme_preference_is_the_shared_one(self):
+        from rebranding_tool import THEME_PREFERENCE
+        assert THEME_PREFERENCE == self.PREFERENCE
+
+    def test_the_theme_is_chosen_by_trying_not_by_looking_it_up(self):
+        """A legacy name still resolves while being deliberately absent from
+        ``theme_names()``, so checking membership first is exactly how the
+        preferred theme gets skipped — which is what happened.
+        """
+        import ast
+
+        source = (REPO / "rebranding_tool.py").read_text(encoding="utf-8")
+        loops = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.For)
+            and "THEME_PREFERENCE" in (ast.dump(node.iter) or "")
+        ]
+        assert loops, "nothing walks THEME_PREFERENCE"
+
+        def calls(node, name):
+            return any(
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == name
+                for call in ast.walk(node)
+            )
+
+        # Applied inside a ``try``, which is what "tried" means here: the
+        # alternative — asking whether the name is in theme_names() and
+        # skipping it if not — is what silently dropped the preferred theme,
+        # and it does not need a try because it never expects to fail.
+        tried = False
+        for loop in loops:
+            assert not calls(loop, "theme_names"), (
+                "the theme is still selected by looking in theme_names()"
+            )
+            for guarded in (n for n in ast.walk(loop) if isinstance(n, ast.Try)):
+                if calls(guarded, "theme_use"):
+                    tried = True
+
+        assert tried, (
+            "no theme is applied inside a try: the preferred name is being "
+            "checked for rather than attempted"
+        )
+
+    def test_the_theme_resolves_to_the_same_palette(self):
+        tk = pytest.importorskip("tkinter", reason="the toolkit is not installed here")
+        tb = pytest.importorskip("ttkbootstrap", reason="ttkbootstrap is optional")
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:
+            pytest.skip(f"no display: {exc}")
+        try:
+            style = tb.Style()
+            for name in self.PREFERENCE:
+                try:
+                    style.theme_use(name)
+                    break
+                except Exception:
+                    continue
+            # flatly's primary. If this changes, the two products have to
+            # change together, which is what the shared tuple is for.
+            assert style.colors.primary == "#2c3e50"
+        finally:
+            root.destroy()
+
+    def test_the_buttons_come_from_the_theme(self):
+        """Not from a palette of our own. Every button in the interface goes
+        through one helper, so this is decided in one place rather than at
+        twenty-odd call sites.
+        """
+        from rebranding_tool import THEMED_BUTTONS
+
+        assert THEMED_BUTTONS["primary"] == "primary.TButton"
+        assert THEMED_BUTTONS["outline"].endswith("Outline.TButton")
+
+    def test_the_hand_made_palette_survives_as_the_fallback(self):
+        """A machine without ttkbootstrap still gets coloured buttons rather
+        than an interface of identical grey rectangles.
+        """
+        from rebranding_tool import BUTTON_PALETTE
+
+        assert set(BUTTON_PALETTE) >= {"primary", "success", "warning", "danger"}

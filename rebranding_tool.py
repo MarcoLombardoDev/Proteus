@@ -67,12 +67,42 @@ except Exception:  # pragma: no cover - environment dependent
 # Palette and styles
 # ---------------------------------------------------------------------------
 
+#: Themes in order of preference. The same list, in the same order, as Iris:
+#: that is what keeps the two products looking like one, whatever a future
+#: version of ttkbootstrap does to the names.
+#:
+#: "flatly" is a pre-2.0 name kept as a migration convenience and planned for
+#: removal; it still resolves, with a DeprecationWarning. It is first because
+#: it is the palette these products have, and "bootstrap-light" is *not* the
+#: same palette despite the two being easy to confuse -- flatly's primary is
+#: a dark navy, bootstrap-light's a bright blue. When flatly goes, both
+#: products move to the next name together.
+THEME_PREFERENCE = ("flatly", "bootstrap-light", "litera", "cosmo")
+
 BRAND_BLUE = "#3365ae"
 
-#: Button styles: (base colour, hover colour, pressed colour).
-#: These are registered as our own ttk styles (`Primary.TButton`, ...) instead
-#: of relying on ttkbootstrap's `bootstyle` option, which only exists on that
-#: library's widgets and makes standard ttk widgets fail.
+#: The theme's own button style behind each kind.
+#:
+#: ttkbootstrap builds these as real ttk styles, so a plain ``ttk.Button`` can
+#: ask for one by name -- which is the whole point: every button in this file
+#: goes through :meth:`btn`, and none of the twenty-odd call sites has to know
+#: whether the library is installed. The ``bootstyle`` option itself cannot be
+#: used that way, because it only exists on ttkbootstrap's own widgets and
+#: makes a standard ttk widget fail.
+#:
+#: Iris uses this theme and these buttons. Proteus used to draw its own, in
+#: its own blue, in Arial bold, which is why the two looked like different
+#: products.
+THEMED_BUTTONS = {
+    "primary": "primary.TButton",
+    "success": "success.TButton",
+    "warning": "warning.TButton",
+    "danger": "danger.TButton",
+    "outline": "secondary.Outline.TButton",
+}
+
+#: The fallback, for a machine with no ttkbootstrap: (base, hover, pressed).
+#: Registered as our own ttk styles only when the theme cannot supply them.
 BUTTON_PALETTE = {
     "primary": (BRAND_BLUE, "#28508a", "#1e3c6a"),
     "success": ("#28a745", "#218838", "#1c7430"),
@@ -285,20 +315,27 @@ class RebrandingToolApp:
         the library and with any version of it.
         """
         self.style: ttk.Style | None = None
+        #: Whether the buttons come from the theme rather than from the
+        #: fallback palette registered further down.
+        self._themed_buttons = False
 
         if BOOTSTRAP_AVAILABLE:
             try:
                 self.style = tb.Style()
-                # `flatly` only exists up to 2.x and is deprecated: try the
-                # modern name first, so no warning is emitted and we do not
-                # depend on a theme being removed.
-                available = set(self.style.theme_names())
-                for theme in ("bootstrap-light", "flatly", "litera", "cosmo"):
-                    if theme in available:
+                # Tried rather than looked up: a legacy name still resolves
+                # but is deliberately absent from theme_names(), so checking
+                # membership first is exactly how the preferred theme gets
+                # skipped.
+                for theme in THEME_PREFERENCE:
+                    try:
                         self.style.theme_use(theme)
-                        break
+                    except Exception:
+                        continue
+                    self._themed_buttons = True
+                    break
             except Exception:
                 self.style = None
+                self._themed_buttons = False
 
         if self.style is None:
             self.style = ttk.Style()
@@ -310,7 +347,19 @@ class RebrandingToolApp:
                 except tk.TclError:
                     pass
 
-        for name, (base, hover, pressed) in BUTTON_PALETTE.items():
+        if self._themed_buttons:
+            # ttkbootstrap builds a style the first time it is asked for one.
+            # Asking here, once, is what lets the plain ttk.Buttons below name
+            # them: without it the lookup finds nothing and they come out in
+            # the default grey.
+            try:
+                for style_name in THEMED_BUTTONS.values():
+                    self.style.configure(style_name)
+            except Exception:
+                self._themed_buttons = False
+
+        for name, (base, hover, pressed) in ({} if self._themed_buttons
+                                             else BUTTON_PALETTE).items():
             style_name = f"{name.capitalize()}.TButton"
             self.style.configure(
                 style_name,
@@ -340,20 +389,28 @@ class RebrandingToolApp:
             darkcolor=BRAND_BLUE,
         )
 
-        self.style.configure(
-            "Outline.TButton",
-            font=("Arial", 9),
-            foreground=BRAND_BLUE,
-            padding=(10, 6),
-        )
-        self.style.map(
-            "Outline.TButton",
-            foreground=[("disabled", "#999999"), ("active", "#1e3c6a")],
-        )
+        if not self._themed_buttons:
+            self.style.configure(
+                "Outline.TButton",
+                font=("Arial", 9),
+                foreground=BRAND_BLUE,
+                padding=(10, 6),
+            )
+            self.style.map(
+                "Outline.TButton",
+                foreground=[("disabled", "#999999"), ("active", "#1e3c6a")],
+            )
 
-    @staticmethod
-    def btn(kind: str) -> dict:
-        """Style options for a button ('primary', 'success', ..., 'outline')."""
+    def btn(self, kind: str) -> dict:
+        """Style options for a button ('primary', 'success', ..., 'outline').
+
+        The theme's own style when there is a theme, and the styles registered
+        in :meth:`_apply_theme` when there is not. Every button in this file
+        comes through here, so which of the two is in play is decided once
+        rather than at twenty-odd call sites.
+        """
+        if self._themed_buttons:
+            return {"style": THEMED_BUTTONS.get(kind, THEMED_BUTTONS["outline"])}
         if kind == "outline" or kind not in BUTTON_PALETTE:
             return {"style": "Outline.TButton"}
         return {"style": f"{kind.capitalize()}.TButton"}
