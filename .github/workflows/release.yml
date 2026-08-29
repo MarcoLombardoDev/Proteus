@@ -115,11 +115,11 @@ jobs:
         run: |
           keep=""
           for asset in "windows-x64.zip" "macos-arm64.zip" "linux-x64.tar.gz"; do
-            # The checksum file is as much a release asset as the archive it
-            # describes: without it in this list, a re-run of this job alone
-            # would strip the checksums and leave the archives unverifiable.
-            keep="$keep $APP_NAME-$VERSION-$asset $APP_NAME-$VERSION-$asset.sha256"
+            keep="$keep $APP_NAME-$VERSION-$asset"
           done
+          # The checksums used to be assets too, and are deliberately not on
+          # this list any more: they belong in the notes, and any .sha256 left
+          # over from a build that published them should go.
           for name in $(gh release view "$TAG" --json assets --jq '.assets[].name'); do
             case " $keep " in
               *" $name "*) ;;
@@ -307,13 +307,120 @@ jobs:
           PAYLOAD: ${{ steps.built.outputs.payload }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          staged="staging/$APP_NAME-$VERSION-${{ matrix.asset }}"
+          # Named after the tool and nothing else. It used to carry the
+          # version and the platform too, which is information the file it
+          # came out of already has, and which left three different folder
+          # names on one person's disk for the same program.
+          staged="staging/$APP_NAME"
           rm -rf staging
           mkdir -p "$staged"
           cp -R "$PAYLOAD" "$staged/"
           cp -R build/licenses "$staged/licenses"
+
+          # The start script, and the digest it checks the executable against.
+          #
+          # That digest travels in the same archive as the executable, so it
+          # catches a truncated download or a half-finished unpack -- the
+          # failure that actually happens to people -- and not tampering,
+          # since whoever could replace the one could replace the other. The
+          # checksums in the release notes are the ones that answer that,
+          # because they arrive by a route the archive did not.
+          case "$RUNNER_OS" in
+            Windows)
+              cp packaging/start.cmd "$staged/start.cmd"
+              named="$APP_NAME.exe"
+              sums="$staged/$APP_NAME.exe.sha256"
+              ;;
+            macOS)
+              # .command rather than .sh, so Finder will run it on a
+              # double-click instead of opening it in an editor.
+              cp packaging/start.sh "$staged/start.command"
+              chmod +x "$staged/start.command"
+              named="$APP_NAME"
+              sums="$staged/$APP_NAME.sha256"
+              ;;
+            *)
+              cp packaging/start.sh "$staged/start.sh"
+              chmod +x "$staged/start.sh"
+              named="$APP_NAME"
+              sums="$staged/$APP_NAME.sha256"
+              ;;
+          esac
+
+          # Written in the format `sha256sum -c` reads, with the name relative
+          # to the file itself, so the archive can be checked with a tool and
+          # not only by the launcher.
+          python - "$staged/$named" "$sums" "$named" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          target, out, name = sys.argv[1:4]
+          with open(target, "rb") as handle:
+              digest = hashlib.file_digest(handle, "sha256").hexdigest()
+          pathlib.Path(out).write_text(f"{digest}  {name}\n", encoding="utf-8")
+          print(f"{digest}  {name}")
+          PY
+
           ls -la "$staged"
           echo "dir=$staged" >> "$GITHUB_OUTPUT"
+
+      # A launcher that refuses to launch is worse than no launcher, and one
+      # that launches whatever it finds is decoration. Both halves are checked
+      # here, on the copy that is about to be packaged.
+      - name: Start the bundle through the launcher
+        shell: bash
+        env:
+          ROOT: ${{ steps.staged.outputs.dir }}
+        run: |
+          case "$RUNNER_OS" in
+            # `cmd //c` and not `cmd /c`: Git Bash rewrites a lone leading
+            # slash into a Windows path, and the doubled one survives that as
+            # the /c cmd expects.
+            Windows) launch="cmd //c start.cmd"; sums="$ROOT/$APP_NAME.exe.sha256" ;;
+            macOS)   launch="./start.command";   sums="$ROOT/$APP_NAME.sha256" ;;
+            *)       launch="./start.sh";        sums="$ROOT/$APP_NAME.sha256" ;;
+          esac
+
+          # Checked by the report the program writes, not by what it prints:
+          # these bundles are built --windowed, and a file on disk is proof
+          # the program really ran on every platform without having to reason
+          # about whether this one has a stdout to read.
+          report=launcher-check.txt
+          rm -f "$ROOT/$report"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            ( cd "$ROOT" && xvfb-run -a $launch --self-check --self-check-report "$report" )
+          else
+            ( cd "$ROOT" && $launch --self-check --self-check-report "$report" )
+          fi
+          if [ ! -s "$ROOT/$report" ]; then
+            echo "::error::the launcher did not start $APP_NAME"
+            exit 1
+          fi
+          cat "$ROOT/$report"
+          rm -f "$ROOT/$report"
+
+          # Now the refusal. The recorded digest is corrupted rather than the
+          # executable, so nothing that ships is ever written to.
+          cp "$sums" "$sums.keep"
+          python - "$sums" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          digest, _, rest = path.read_text(encoding="utf-8").partition("  ")
+          # A digest of the right shape and the wrong value: the launcher has
+          # to reject it on the comparison, not on failing to parse it.
+          path.write_text(f"{'f' * len(digest)}  {rest}", encoding="utf-8")
+          PY
+
+          if ( cd "$ROOT" && $launch --version ) > /dev/null 2>&1; then
+            mv "$sums.keep" "$sums"
+            echo "::error::the launcher started a binary that failed its checksum"
+            exit 1
+          fi
+          mv "$sums.keep" "$sums"
+          echo "the launcher refuses a mismatched checksum"
 
       - name: Package
         id: package
@@ -390,4 +497,90 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release.outputs.tag }}
           ASSET: ${{ steps.package.outputs.name }}
-        run: gh release upload "$TAG" "$ASSET" "$ASSET.sha256" --clobber
+        run: gh release upload "$TAG" "$ASSET" --clobber
+
+      # The digest goes up as a workflow artifact rather than a release asset.
+      # It still has to reach the release page -- a checksum is only worth
+      # anything if it arrives by a route the archive did not -- but three
+      # more files in the download list is not the way. The job at the end of
+      # this file collects the three and writes them into the notes.
+      - name: Hand the checksum to the notes job
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksum-${{ matrix.asset }}
+          path: ${{ steps.package.outputs.name }}.sha256
+          if-no-files-found: error
+          retention-days: 1
+  # Where the checksums end up.
+  #
+  # They were release assets until people started downloading these builds and
+  # found three extra files in the list for every one they wanted. What a
+  # checksum has to do is arrive by a route the archive did not, so that a
+  # replaced archive cannot quietly carry a matching digest — and the notes
+  # GitHub renders on the release page are exactly such a route. Being read
+  # rather than downloaded is if anything the point: it is the archive that
+  # gets copied around, not the page.
+  #
+  # This runs after all three builds, because a partial list is worse than
+  # none: a reader who finds two of three has no way to tell whether the third
+  # is missing or merely unlisted.
+  checksums:
+    name: Write the checksums into the notes
+    needs: [release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: checksum-*
+          path: checksums
+          merge-multiple: true
+
+      - name: Write them into the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          gh release view "$TAG" --json body --jq .body > body.md
+          python3 - body.md checksums <<'PY'
+          import pathlib
+          import sys
+
+          body_path, digests = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+
+          # Ordered by the archive's name, not by the digest, so the three
+          # lines read in the same order as the table above them.
+          lines = sorted(
+              (path.read_text(encoding="utf-8").strip()
+               for path in digests.glob("*.sha256")),
+              key=lambda line: line.split("  ", 1)[-1],
+          )
+          if not lines:
+              raise SystemExit("no checksums were handed up by the build jobs")
+
+          listing = "\n".join(lines)
+          block = (
+              "<!-- checksums -->\n"
+              "### Checksums\n\n"
+              "SHA-256 of each archive as the build machine produced it. These "
+              "are on this page rather than in the archives on purpose: a "
+              "digest that travels with the file it describes can only tell "
+              "you the file is undamaged.\n\n"
+              f"```\n{listing}\n```\n"
+              "<!-- /checksums -->"
+          )
+
+          body = body_path.read_text(encoding="utf-8")
+          head, marker, rest = body.partition("<!-- checksums -->")
+          if marker:
+              # A re-run rewrites its own block rather than stacking another
+              # one under it.
+              _, _, tail = rest.partition("<!-- /checksums -->")
+              body = head + block + tail
+          else:
+              body = body.rstrip("\n") + "\n\n" + block + "\n"
+
+          body_path.write_text(body, encoding="utf-8")
+          print(body)
+          PY
+          gh release edit "$TAG" --notes-file body.md

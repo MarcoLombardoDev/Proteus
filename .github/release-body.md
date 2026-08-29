@@ -22,6 +22,14 @@ atomically with recoverable backups.
 Each archive is built on that platform's own runner — no cross-compilation, no emulation.
 Unpack and run: no installation, and no Python needed.
 
+Each unpacks to a single `Proteus/` folder. Start it with the script beside the program —
+`start.cmd` on Windows, `start.command` on macOS, `start.sh` on Linux. It checks the
+program against the digest recorded when the archive was built and stops rather than
+launching if they disagree, which is how a truncated download gets caught at the point of
+launch instead of somewhere further in. On Windows the console stays up until the window
+appears, because the first launch is slow. The program still starts on its own if you
+prefer.
+
 ### Windows will say the publisher is unknown
 
 It is meant to. These builds carry **no code-signing certificate**, so Microsoft Defender
@@ -29,15 +37,17 @@ SmartScreen shows *"Windows protected your PC"* and offers only **Don't run**. C
 **More info**, then **Run anyway**. Nothing is wrong with the download; SmartScreen is
 reporting that it has never seen this publisher, which is true.
 
-Because that warning asks you to trust a file you cannot check by looking at it, every
-archive ships with a `.sha256` beside it. In PowerShell:
+Because that warning asks you to trust a file you cannot check by looking at it, the
+SHA-256 of all three archives is listed under **Checksums** at the bottom of these notes.
+In PowerShell:
 
 ```powershell
 Get-FileHash .\Proteus-{{VERSION}}-windows-x64.zip -Algorithm SHA256
 ```
 
-The hash it prints must match the one inside `Proteus-{{VERSION}}-windows-x64.zip.sha256`.
-If it does, the file is byte for byte what the build produced.
+If what it prints matches the line below, the file is byte for byte what the build
+produced. Those digests are here rather than in the archives on purpose: one that travels
+with the file it describes can only tell you the file is undamaged.
 
 On **macOS**, Gatekeeper refuses an unidentified developer the same way: right-click the
 application and choose **Open**, or run `xattr -dr com.apple.quarantine Proteus`.

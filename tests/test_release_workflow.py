@@ -62,9 +62,9 @@ def step_named(steps, name):
     return next((step for step in steps if step.get("name") == name), None)
 
 
-def test_the_workflow_is_valid_yaml_and_has_both_jobs():
+def test_the_workflow_is_valid_yaml_and_has_all_three_jobs():
     workflow = load_workflow()
-    assert set(workflow["jobs"]) == {"release", "build"}
+    assert set(workflow["jobs"]) == {"release", "build", "checksums"}
 
 
 def test_every_workflow_file_in_the_repository_parses():
@@ -363,10 +363,45 @@ class TestChecksums:
         assert step is not None, "the archives ship with nothing to check them against"
         assert "sha256" in step["run"].lower()
 
-    def test_the_checksum_is_uploaded_with_the_archive(self):
-        """A checksum that stays on the runner is a checksum nobody has."""
+    def test_the_checksum_leaves_the_runner(self):
+        """A checksum that stays on the runner is a checksum nobody has. It is
+        no longer a release asset — three extra files in a download list of
+        three is noise — so it travels up as a workflow artifact instead, and
+        the job at the end writes it into the notes.
+        """
+        steps = build_steps(load_workflow())
+        step = step_named(steps, "Hand the checksum to the notes job")
+        assert step is not None, "the digest never leaves the build runner"
+        assert step["with"]["path"].endswith(".sha256")
+        assert step["with"]["if-no-files-found"] == "error", (
+            "a missing digest would pass silently"
+        )
+
+    def test_the_checksums_are_not_release_assets(self):
+        """What the download list offers is three archives, not six files."""
         step = step_named(build_steps(load_workflow()), "Upload to the release")
-        assert '"$ASSET.sha256"' in step["run"]
+        assert ".sha256" not in step["run"]
+
+    def test_the_checksums_reach_the_release_notes(self):
+        """A checksum is worth something only if it arrives by a route the
+        archive did not. The notes GitHub renders are such a route; a file
+        inside the archive is not.
+        """
+        job = load_workflow()["jobs"]["checksums"]
+        assert job["needs"] == ["release", "build"], (
+            "a partial list of checksums is worse than none"
+        )
+        run = " ".join(step.get("run", "") for step in job["steps"])
+        assert "gh release edit" in run
+        assert "--notes-file" in run
+
+    def test_rewriting_the_notes_twice_does_not_stack_two_blocks(self):
+        """Re-running the release is normal. Appending a second checksum
+        block each time is not.
+        """
+        job = load_workflow()["jobs"]["checksums"]
+        run = " ".join(step.get("run", "") for step in job["steps"])
+        assert "<!-- checksums -->" in run and "<!-- /checksums -->" in run
 
     def test_it_is_recorded_after_packaging(self):
         """The checksum describes the archive, so the archive has to exist."""
@@ -374,14 +409,17 @@ class TestChecksums:
         assert names.index("Package") < names.index("Record the checksum")
         assert names.index("Record the checksum") < names.index("Upload to the release")
 
-    def test_the_cleanup_does_not_strip_the_checksums(self):
-        """The release job deletes every asset it does not recognise. Left off
-        that list, a re-run of that job alone would remove the checksums and
-        leave the archives unverifiable.
+    def test_the_cleanup_removes_checksums_left_by_an_older_build(self):
+        """The releases before this one published their checksums as assets.
+        A release the tag is moved onto still carries them, and the cleanup's
+        job is to take away anything the notes no longer describe.
         """
         steps = load_workflow()["jobs"]["release"]["steps"]
         step = step_named(steps, "Remove assets left by a previous build")
-        assert ".sha256" in step["run"]
+        keep = step["run"].split("for name in", 1)[0]
+        assert "$asset.sha256" not in keep, (
+            "a checksum published by an older build would be kept for ever"
+        )
 
     def test_it_is_written_in_the_format_a_tool_can_check(self):
         """`sha256sum -c` reads "<hex>  <name>". Anything else has to be
@@ -398,4 +436,176 @@ def test_the_download_notes_say_what_the_windows_warning_is():
     body = BODY_PATH.read_text(encoding="utf-8")
     assert "SmartScreen" in body
     assert "Run anyway" in body, "the notes do not say how to get past the warning"
-    assert ".sha256" in body, "the notes do not say the checksum exists"
+    assert "Checksums" in body, "the notes do not point at the checksums below them"
+
+
+class TestLauncher:
+    """The start script that ships next to the executable.
+
+    A download that arrives truncated, or an unpack that stops half way,
+    produces an executable that starts and then misbehaves in ways nobody can
+    diagnose. The launcher turns that into one sentence at the point of
+    launch, by comparing the executable against the digest recorded when it
+    was built.
+
+    It is careful about what it claims. The digest travels inside the same
+    archive as the executable it describes, so it catches damage and not
+    tampering — anyone who could replace one could replace the other. The
+    check that answers *that* question is the list of digests in the release
+    notes, which reaches the reader by a route the archive did not.
+    """
+
+    def test_both_launchers_are_in_the_repository(self):
+        for name in ("start.sh", "start.cmd"):
+            assert (REPO / "packaging" / name).is_file(), f"packaging/{name} is missing"
+
+    def test_the_launcher_is_installed_beside_the_executable(self):
+        step = step_named(build_steps(load_workflow()), "Assemble what goes in the archive")
+        assert step is not None, "nothing assembles the archive"
+        assert "packaging/start.cmd" in step["run"]
+        assert "packaging/start.sh" in step["run"]
+
+    def test_the_archive_is_a_folder_named_after_the_tool(self):
+        """It used to carry the version and the platform as well, which the
+        file it came out of already says, and which left three folder names on
+        one person's disk for the same program.
+        """
+        step = step_named(build_steps(load_workflow()), "Assemble what goes in the archive")
+        assert 'staged="staging/$APP_NAME"' in step["run"]
+
+    def test_the_executable_gets_its_own_checksum_in_the_bundle(self):
+        step = step_named(build_steps(load_workflow()), "Assemble what goes in the archive")
+        assert ".exe.sha256" in step["run"], "no checksum beside the Windows exe"
+        assert ".sha256" in step["run"]
+
+    def test_that_checksum_is_written_where_a_tool_can_read_it(self):
+        """``<hex>  <name>`` is what ``sha256sum -c`` reads. Any other shape
+        has to be compared by eye, which is how a wrong digest gets waved
+        through.
+        """
+        step = step_named(build_steps(load_workflow()), "Assemble what goes in the archive")
+        assert "{digest}  {name}" in step["run"]
+
+    def test_the_launcher_is_run_before_the_archive_is_made(self):
+        """A launcher nobody started is a launcher nobody knows works."""
+        names = [step.get("name") for step in build_steps(load_workflow())]
+        assert "Start the bundle through the launcher" in names
+        assert names.index("Start the bundle through the launcher") < names.index("Package")
+
+    def test_the_release_run_proves_the_launcher_really_started_the_program(self):
+        """Checked by the report the program writes, not by what it prints:
+        these bundles are built --windowed, and a file on disk is proof it ran
+        on every platform.
+        """
+        step = step_named(build_steps(load_workflow()), "Start the bundle through the launcher")
+        assert "--self-check-report" in step["run"]
+
+    def test_the_release_run_proves_the_launcher_refuses_a_bad_checksum(self):
+        """A launcher that verifies nothing also passes the half above."""
+        step = step_named(build_steps(load_workflow()), "Start the bundle through the launcher")
+        assert "failed its checksum" in step["run"]
+
+    def test_the_launcher_refuses_rather_than_warning(self):
+        script = (REPO / "packaging" / "start.sh").read_text(encoding="utf-8")
+        body = script.split("digest_of()", 1)[1]
+        assert "exit 1" in body, "the launcher does not stop on a mismatch"
+
+    def test_the_launcher_can_be_told_to_skip_the_check(self):
+        """Somebody who has patched the executable on purpose should be able
+        to run it. The point is that they have to say so.
+        """
+        for name in ("start.sh", "start.cmd"):
+            text = (REPO / "packaging" / name).read_text(encoding="utf-8")
+            assert "PROTEUS_SKIP_VERIFY" in text
+
+    def test_the_launcher_passes_arguments_through(self):
+        """``--version`` and ``--self-check`` are how the release itself
+        starts the bundle. A launcher that swallowed them could not be tested
+        by running it.
+        """
+        assert '"$exe" "$@"' in (REPO / "packaging" / "start.sh").read_text(encoding="utf-8")
+        assert '"%EXE%" %*' in (REPO / "packaging" / "start.cmd").read_text(encoding="utf-8")
+
+    def test_the_batch_launcher_keeps_windows_line_endings(self):
+        """cmd.exe has historically mis-parsed ``goto`` in an LF-only batch
+        file. ``.gitattributes`` pins it so no checkout can undo it.
+        """
+        raw = (REPO / "packaging" / "start.cmd").read_bytes()
+        assert b"\r\n" in raw
+        assert raw.replace(b"\r\n", b"").count(b"\n") == 0, "mixed line endings"
+        attrs = (REPO / ".gitattributes").read_text(encoding="utf-8")
+        assert "*.cmd text eol=crlf" in attrs
+
+    def test_the_shell_launcher_keeps_unix_line_endings(self):
+        """/bin/sh treats a trailing CR as part of the last word, so a CRLF
+        checkout produces "bad interpreter" and nothing else.
+        """
+        assert b"\r" not in (REPO / "packaging" / "start.sh").read_bytes()
+        assert "*.sh text eol=lf" in (REPO / ".gitattributes").read_text(encoding="utf-8")
+
+    def test_every_goto_in_the_batch_launcher_has_a_label(self):
+        """cmd.exe does not check labels until it reaches the jump, so a
+        `goto` at a branch nobody takes in testing fails in front of the user
+        and nowhere else.
+        """
+        import re
+
+        text = (REPO / "packaging" / "start.cmd").read_text(encoding="utf-8")
+        labels = set(re.findall(r"^:(\w+)", text, re.MULTILINE))
+        jumps = set(re.findall(r"\bgoto\s+:?(\w+)", text))
+        assert jumps <= labels, f"goto with no label: {sorted(jumps - labels)}"
+
+    def test_the_batch_launcher_says_something_while_the_program_starts(self):
+        """A frozen application can take most of a minute to appear the first
+        time, because Windows scans the whole folder before it will run any of
+        it. A console that closes instantly leaves the user watching an empty
+        desktop with no idea whether anything happened.
+        """
+        text = (REPO / "packaging" / "start.cmd").read_text(encoding="utf-8")
+        assert "echo Starting %APP%" in text
+
+    def test_the_batch_launcher_waits_for_the_window_before_closing(self):
+        """WaitForInputIdle returns when the process is sitting in its message
+        loop with its window up. Anything else — a fixed sleep, or none —
+        either closes too early or wastes the user's time.
+        """
+        text = (REPO / "packaging" / "start.cmd").read_text(encoding="utf-8")
+        assert "WaitForInputIdle" in text
+
+    def test_the_batch_launcher_starts_the_program_exactly_once(self):
+        """The failure to avoid: PowerShell starts the program, then reports
+        something the batch file reads as "it did not start", and the fallback
+        starts a second copy.
+        """
+        text = (REPO / "packaging" / "start.cmd").read_text(encoding="utf-8")
+        lines = [line.strip() for line in text.splitlines()]
+
+        starts = [i for i, line in enumerate(lines) if line == 'start "" "%EXE%"']
+        assert len(starts) == 1, "more than one place starts the program"
+
+        powershell = next(i for i, line in enumerate(lines) if "WaitForInputIdle" in line)
+        jumps = [i for i, line in enumerate(lines) if "goto :handoff" in line]
+        assert jumps, "nothing checks for PowerShell before relying on it"
+        assert all(i < powershell for i in jumps), (
+            "a jump to the fallback after PowerShell would start a second copy"
+        )
+
+        # cmd.exe runs straight through a label. The line above :handoff has to
+        # stop, or every path that already started the program falls into it.
+        label = lines.index(":handoff")
+        previous = next(
+            lines[i] for i in range(label - 1, -1, -1)
+            if lines[i] and not lines[i].startswith("rem")
+        )
+        assert previous.startswith("exit /b"), (
+            f"execution falls through into :handoff from {previous!r}"
+        )
+
+    def test_the_launcher_does_not_claim_to_prove_authorship(self):
+        """The digest ships in the same archive as the file it describes. It
+        catches damage, not tampering, and saying otherwise would be worse
+        than saying nothing.
+        """
+        for name in ("start.sh", "start.cmd"):
+            text = (REPO / "packaging" / name).read_text(encoding="utf-8").lower()
+            assert "tampering" in text, f"packaging/{name} does not say what it cannot do"

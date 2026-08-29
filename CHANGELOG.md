@@ -12,6 +12,25 @@ deliberately summarised rather than itemised.
 ## [Unreleased]
 
 ### Added
+- **A start script and the program's own checksum, inside the archive.** Every
+  archive now unpacks to a folder holding the program, `start.cmd`,
+  `start.command` or `start.sh` beside it, the licence texts, and the digest
+  that script checks. Starting through it recomputes the program's SHA-256 and
+  refuses to launch on a mismatch, which turns a truncated download or a
+  half-finished unpack into one sentence at the point of launch instead of a
+  program that misbehaves later for no visible reason. On Windows the console
+  stays up, saying what it is waiting for, until the program's window is
+  actually there — the first launch is slow because Windows scans every file
+  before it will run any of them, and a console that vanished instantly left
+  nothing on screen for that whole wait. `PROTEUS_SKIP_VERIFY=1` skips the
+  check for anyone who has changed the executable deliberately.
+
+  It is deliberately modest about what it proves. That digest travels in the
+  same archive as the program, so it catches damage and not tampering — whoever
+  could replace one could replace the other. The checksums in the release notes
+  are the ones that answer that question, because they reach you by a different
+  route, and the launcher, the README and the notes all say so rather than
+  implying more.
 - **A SHA-256 checksum beside every archive.** These builds are unsigned, so
   Windows tells whoever downloads one that the publisher is unknown and offers
   only "Don't run". Nothing in this repository can remove that — a
@@ -48,6 +67,18 @@ deliberately summarised rather than itemised.
 - `CHANGELOG.md` — this file.
 
 ### Changed
+- **The archive unpacks to a folder named after the tool.** It was
+  `Proteus-<version>-<platform>/`, which repeats what the file it came out of
+  already says and leaves three different folder names on one person's disk for
+  the same program. It is now `Proteus/`.
+- **The archives' checksums moved from the download list into the release
+  notes.** Three `.sha256` files beside three archives doubled the length of
+  the list for no one's benefit. The digests are now printed under
+  **Checksums** in the notes, which keeps the property that matters — a
+  checksum is only evidence if it reaches you by a route the archive did not —
+  and takes the clutter away. `tests/test_release_workflow.py` pins that they
+  are written after all three builds, and that a re-run rewrites the block
+  rather than stacking a second one under it.
 - **The release smoke test now saves a file.** `--version` exits during
   argument parsing, before tkinter is imported: a bundle missing its Tcl/Tk libraries
   passed it, and so did a bundle that could not write anything. `--self-check`
