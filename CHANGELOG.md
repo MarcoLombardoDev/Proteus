@@ -67,6 +67,12 @@ deliberately summarised rather than itemised.
 - `CHANGELOG.md` — this file.
 
 ### Changed
+- **The release now fails if the tag and the program disagree about the
+  version.** Nothing checked it, which is exactly how a `v1.0.0` tag could
+  produce `Proteus-1.0.0-windows-x64.zip` containing a program that answers
+  `--version` with something else — a download whose name and contents
+  contradict each other. The smoke test compares the two on every platform and
+  stops the release rather than publishing that.
 - **The archive unpacks to a folder named after the tool.** It was
   `Proteus-<version>-<platform>/`, which repeats what the file it came out of
   already says and leaves three different folder names on one person's disk for
@@ -161,6 +167,15 @@ deliberately summarised rather than itemised.
   cannot silently come back. Archives already published still contain it, which
   §11 and THIRD-PARTY-LICENSES.md both say rather than leaving the reader to
   find out.
+
+## Renumbered to 1.0.0
+
+Orion, Iris, Proteus and Argus share one release process, one licence and one
+set of conventions; from here they share a starting version as well. Proteus had reached 1.3.0 under its own numbering, and restarts here.
+Everything below this line is the real history and is kept for that reason:
+nothing about the program went backwards. What changed is the number the next
+release carries, and it changed at the one moment it costs nothing — before
+anybody had downloaded any of it.
 
 ## [1.3.0] — 2026-08-17
 

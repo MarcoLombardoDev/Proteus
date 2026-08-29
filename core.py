@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover - environment dependent
 APP_NAME = "Proteus"
 #: Shown next to the name: Proteus is the product, this says what it does.
 APP_TAGLINE = "Rebranding Tool"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.0.0"
 APP_SLUG = "Proteus"
 
 APP_AUTHOR = "Marco Lombardo"
