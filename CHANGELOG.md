@@ -12,6 +12,19 @@ deliberately summarised rather than itemised.
 ## [Unreleased]
 
 ### Added
+- **One icon across the four products: the initial, in black, on white, in a
+  serif face.** Drawn by `tools/make_icon.py`, which the four share and which
+  differs only in the letter, so a taskbar with all of them open reads as one
+  family instead of four unrelated programs. The face is Liberation Serif,
+  metric-compatible with Times New Roman and redistributable, where Times New
+  Roman itself is neither free nor present on the machines that build these.
+
+  Every size is drawn for itself rather than scaled down from a single master:
+  a frame that reads as a hairline at 256 pixels is a smear at 16, and the
+  letter that has room to breathe at 256 has to fill the square at 16 to still
+  be a letter. Below 32 pixels there is no frame at all. Both files are
+  committed rather than generated during the build, so no release depends on
+  which fonts a runner happens to have.
 - **A start script and the program's own checksum, inside the archive.** Every
   archive now unpacks to a folder holding the program, `start.cmd`,
   `start.command` or `start.sh` beside it, the licence texts, and the digest
@@ -130,6 +143,12 @@ deliberately summarised rather than itemised.
   `Proteus.exe`.
 
 ### Fixed
+- **Off Windows, the window had no icon at all.** Proteus shipped only an
+  `.ico`, and Tk's `iconbitmap` reads that on Windows and nowhere else, so the
+  Linux and macOS builds ran under the bare Tk feather. A PNG now travels with
+  it and `iconphoto` is used off Windows. The two places that set the icon —
+  `main.py` on the root and the application class a moment later — have become
+  one, which is how they had managed to disagree.
 - **The Windows start script waited on the wrong process.** It called
   `WaitForInputIdle` on what `Start-Process` handed back, which is right for
   one process and wrong for two: a onefile build starts a bootloader that

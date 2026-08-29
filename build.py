@@ -143,7 +143,7 @@ class RebrandingToolBuilder:
         ]
 
         add_data = []
-        for asset in ("app.ico",):
+        for asset in ("app.ico", "app.png"):
             if os.path.exists(asset):
                 add_data.append(f"{asset}{DATA_SEP}.")
             else:

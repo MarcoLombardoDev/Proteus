@@ -103,14 +103,9 @@ def main() -> int:
 
         root = tk.Tk()
 
-        base = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
-                else os.path.dirname(os.path.abspath(__file__)))
-        icon_path = os.path.join(base, "app.ico")
-        if os.path.exists(icon_path):
-            try:
-                root.iconbitmap(icon_path)
-            except Exception:
-                pass  # icon format unsupported on this platform
+        # RebrandingToolApp sets the icon on this same root a moment later.
+        # This used to do it too, from a different path and Windows-only,
+        # which is how the two managed to disagree.
 
         RebrandingToolApp(root)
         root.mainloop()

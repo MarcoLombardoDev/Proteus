@@ -100,6 +100,34 @@ SORT_KEY_COLUMNS = {"size", "dim", "sim", "target_dim", "src_dim"}
 LOG_BUFFER_SIZE = 2000
 
 
+
+def set_window_icon(window) -> None:
+    """Give a Tk window the application icon, whatever the platform.
+
+    Two files, because Tk needs two: ``iconbitmap`` reads the .ico and only
+    does so on Windows, and everywhere else the icon has to arrive as a
+    PhotoImage through ``iconphoto``. Proteus shipped only the .ico, so off
+    Windows the window carried the bare Tk feather.
+
+    The PhotoImage is kept on the window: Tk holds only a weak reference to
+    it, and a garbage-collected image leaves a blank icon behind.
+
+    Never raises. A missing icon is a cosmetic problem, and no cosmetic
+    problem should be a reason the program does not start.
+    """
+    try:
+        if os.name == "nt":
+            ico = core.resource_path("app.ico")
+            if os.path.exists(ico):
+                window.iconbitmap(ico)
+                return
+        png = core.resource_path("app.png")
+        if os.path.exists(png):
+            window._app_icon = tk.PhotoImage(file=png)
+            window.iconphoto(True, window._app_icon)
+    except Exception:  # noqa: BLE001 — see the docstring
+        pass
+
 class RebrandingToolApp:
     """Main Rebranding Tool application."""
 
@@ -176,12 +204,7 @@ class RebrandingToolApp:
         self.root.minsize(940, 660)
 
     def _set_window_icon(self):
-        icon = core.resource_path("app.ico")
-        if os.path.exists(icon):
-            try:
-                self.root.iconbitmap(icon)
-            except Exception:
-                pass  # .ico via iconbitmap is not supported on every platform
+        set_window_icon(self.root)
 
     def _apply_theme(self):
         """
