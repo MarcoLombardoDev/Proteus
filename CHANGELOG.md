@@ -80,6 +80,12 @@ deliberately summarised rather than itemised.
 - `CHANGELOG.md` — this file.
 
 ### Changed
+- **The window opens maximised.** All four now fill the screen at start-up
+  rather than opening at a fixed size in the corner. Deliberately maximised
+  and not true full screen: that hides the title bar and the way out of it,
+  which is right for a slideshow and wrong for a tool somebody works in
+  alongside other windows. The size each window returns to when un-maximised
+  is the one it used to open at.
 - **`THIRD-PARTY-LICENSES.md` regenerated from the published 1.0.0 archive**,
   rather than still naming the archive of a version that no longer exists.
   Every row came out identical, which is the answer worth having: the

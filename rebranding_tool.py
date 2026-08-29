@@ -101,6 +101,59 @@ LOG_BUFFER_SIZE = 2000
 
 
 
+def maximise(window) -> None:
+    """Open the window filling the screen.
+
+    Three attempts, because no one of them works everywhere. ``zoomed`` is a
+    Windows state that some Linux window managers also honour; ``-zoomed`` is
+    the X11 attribute; sizing to the screen is what is left when the window
+    manager offers neither.
+
+    Each attempt is *measured* rather than trusted. Not raising is not the
+    same as having worked: with no window manager running, both of the first
+    two are accepted in silence and change nothing, and a chain that stops at
+    the first one that did not raise never reaches the one that would have
+    worked. So the window is asked how big it now is, and the next attempt
+    runs unless it really did grow.
+
+    Deliberately not true full screen: that hides the title bar and the way
+    out of it, which is right for a slideshow and wrong for a tool somebody
+    works in alongside other windows.
+
+    Never raises. A window that opened at the wrong size is a nuisance; one
+    that failed to open is not.
+    """
+    def filled() -> bool:
+        try:
+            window.update_idletasks()
+            return (
+                window.winfo_width() >= window.winfo_screenwidth() * 0.9
+                and window.winfo_height() >= window.winfo_screenheight() * 0.8
+            )
+        except Exception:  # noqa: BLE001 — see the docstring
+            return False
+
+    # Mapped first, or every measurement below reads 1x1 and every
+    # attempt looks like it failed.
+    try:
+        window.update_idletasks()
+    except Exception:  # noqa: BLE001 — see the docstring
+        pass
+
+    for attempt in (
+        lambda: window.state("zoomed"),
+        lambda: window.attributes("-zoomed", True),
+        lambda: window.geometry(
+            f"{window.winfo_screenwidth()}x{window.winfo_screenheight()}+0+0"
+        ),
+    ):
+        try:
+            attempt()
+        except Exception:  # noqa: BLE001 — see the docstring
+            continue
+        if filled():
+            return
+
 def set_window_icon(window) -> None:
     """Give a Tk window the application icon, whatever the platform.
 
@@ -200,6 +253,9 @@ class RebrandingToolApp:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._pump_ui_queue()
 
+        # Last, so the window is measured with its real contents in it.
+        maximise(self.root)
+
         self.log(t("{app} {version} started.").format(app=APP_NAME,
                                                       version=APP_VERSION))
         if not PIL_AVAILABLE:
@@ -212,6 +268,8 @@ class RebrandingToolApp:
 
     def _apply_window_chrome(self):
         self.root.title(f"{APP_NAME} - {APP_TAGLINE} {APP_VERSION}")
+        # The size the window returns to when it is un-maximised; it opens
+        # maximised, at the end of __init__, once the widgets are in place.
         self.root.geometry("1150x780")
         self.root.minsize(940, 660)
 

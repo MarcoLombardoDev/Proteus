@@ -276,3 +276,55 @@ class TestWindowIcon:
             if isinstance(target, ast.Attribute)
         ]
         assert assigned, "the PhotoImage is not stored anywhere and will be collected"
+
+
+class TestStartsMaximised:
+    """The window opens filling the screen.
+
+    Measured rather than trusted, which is the whole point of the helper:
+    ``state("zoomed")`` and the ``-zoomed`` attribute are both accepted in
+    silence by a Tk with no window manager behind it, so a chain that stops at
+    the first call that did not raise can leave a 300x200 window and report
+    success.
+    """
+
+    def _maximise(self):
+        pytest.importorskip("tkinter", reason="the toolkit is not installed here")
+        from rebranding_tool import maximise
+        return maximise
+
+    def test_it_fills_the_screen(self):
+        tk = pytest.importorskip("tkinter", reason="the toolkit is not installed here")
+        maximise = self._maximise()
+        try:
+            root = tk.Tk()
+        except tk.TclError as exc:               # no display
+            pytest.skip(f"no display: {exc}")
+
+        try:
+            root.geometry("300x200")
+            root.update()
+            assert root.winfo_width() < root.winfo_screenwidth() * 0.9, (
+                "the window was already the size of the screen; nothing was proved"
+            )
+
+            maximise(root)
+            root.update()
+            assert root.winfo_width() >= root.winfo_screenwidth() * 0.9
+            assert root.winfo_height() >= root.winfo_screenheight() * 0.8
+        finally:
+            root.destroy()
+
+    def test_it_does_not_raise_on_a_window_that_cannot_be_measured(self):
+        """A window that opened at the wrong size is a nuisance. One that
+        failed to open is not.
+        """
+        maximise = self._maximise()
+
+        class Hopeless:
+            def __getattr__(self, name):
+                def boom(*args, **kwargs):
+                    raise RuntimeError("no window manager, no window, nothing")
+                return boom
+
+        maximise(Hopeless())      # must simply return
