@@ -130,6 +130,23 @@ deliberately summarised rather than itemised.
   `Proteus.exe`.
 
 ### Fixed
+- **The Windows start script waited on the wrong process.** It called
+  `WaitForInputIdle` on what `Start-Process` handed back, which is right for
+  one process and wrong for two: a onefile build starts a bootloader that
+  unpacks itself and re-runs itself, and the copy that opens the window is its
+  child. The bootloader has no message loop, so the wait ran out its whole
+  timeout while the program sat there on screen, and the console then
+  announced that nothing had happened and asked for a keypress. It now polls
+  for a main window on any process with the program's image name, which covers
+  both shapes, and reads "it stopped" from the process handle rather than from
+  a name disappearing.
+- **The release now runs the start script the way a user does.** Every check
+  passed it arguments, and the no-argument path -- the double-click, the one
+  that waits for the window -- was the one nobody ran. The release now takes it
+  too, on Windows, and fails if the launcher reports failure while the program
+  is running. It also runs on a copy of the staging directory rather than in
+  it, so anything a program writes on first start cannot end up inside the
+  archive.
 - **Three libraries in the Windows archive had no licence stated, and two of
   them had no notice either.** The build carries Tcl/Tk **9**, whose Tk library
   is `tcl9tk90.dll` — a pattern written around 8.6's `tcl86t.dll` matched
