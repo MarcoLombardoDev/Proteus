@@ -122,6 +122,32 @@ class TestApplicationIcon:
         with Image.open(self.PNG) as png:
             assert png.size == (512, 512)
 
+    def test_the_frame_is_there_at_every_size(self):
+        """The four products draw their window icon from different sources —
+        Qt scales the 512-pixel PNG, Tk picks the matching frame out of the
+        .ico — so a rule that dropped the frame at small sizes made one
+        product look like two and the four look like four families. Reported
+        exactly that way: one had a black border and another did not.
+        """
+        Image = pytest.importorskip("PIL.Image", reason="Pillow reads the icon")
+        with Image.open(self.ICO) as icon:
+            sizes = sorted(icon.info["sizes"])
+            for size in sizes:
+                icon.size = size
+                frame = icon.copy().convert("L")
+                width, height = frame.size
+                edge = (
+                    [frame.getpixel((x, 0)) for x in range(width)]
+                    + [frame.getpixel((x, height - 1)) for x in range(width)]
+                    + [frame.getpixel((0, y)) for y in range(height)]
+                    + [frame.getpixel((width - 1, y)) for y in range(height)]
+                )
+                dark = sum(1 for value in edge if value < 128)
+                assert dark > len(edge) * 0.8, (
+                    f"the {width}px frame is missing or too faint "
+                    f"({dark} of {len(edge)} edge pixels are dark)"
+                )
+
     def test_it_is_black_on_white(self):
         """Not a check of taste: an icon that came out mostly transparent, or
         inverted, still opens and still looks like a file.
@@ -180,3 +206,73 @@ class TestApplicationIcon:
     def test_the_generator_is_kept_with_them(self):
         """So the next one can be drawn the same way rather than guessed at."""
         assert (REPO / "tools" / "make_icon.py").is_file()
+
+
+class TestWindowIcon:
+    """The icon has to reach the window, not merely ship beside it.
+
+    Reported: the executable carried both the .ico and the .png -- verified by
+    reading them back out of the published build -- and the window still came
+    up under Tk's default feather. The cause was one ``try`` around both
+    attempts: ``iconbitmap`` raised, and the fallback that would have set the
+    PNG never ran.
+    """
+
+    SOURCE = REPO / "rebranding_tool.py"
+    FUNCTION = "set_window_icon"
+
+    def _icon_function(self):
+        import ast
+
+        tree = ast.parse(self.SOURCE.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == self.FUNCTION:
+                return node
+        raise AssertionError(f"{self.FUNCTION} is not in {self.SOURCE}")
+
+    def test_it_sets_the_icon_from_both_files(self):
+        import ast
+
+        called = {
+            node.func.attr
+            for node in ast.walk(self._icon_function())
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        assert "iconphoto" in called, "nothing sets the icon off Windows"
+        assert "iconbitmap" in called, "nothing uses the .ico on Windows"
+
+    def test_one_attempt_failing_does_not_take_the_other_down(self):
+        """The bug, stated as a shape: no single ``try`` may hold both calls.
+
+        Tk raises before it changes anything, so the two are safe to attempt
+        independently -- and independent is the only way a failure in one
+        leaves the other's work standing.
+        """
+        import ast
+
+        for node in ast.walk(self._icon_function()):
+            if not isinstance(node, ast.Try):
+                continue
+            inside = {
+                call.func.attr
+                for call in ast.walk(node)
+                if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            }
+            assert not {"iconphoto", "iconbitmap"} <= inside, (
+                "both attempts share one try: a failure in either loses both"
+            )
+
+    def test_the_photo_image_is_kept_alive(self):
+        """Tk holds only a weak reference to it. A collected PhotoImage
+        leaves a blank icon, which looks exactly like never setting one.
+        """
+        import ast
+
+        assigned = [
+            target.attr
+            for node in ast.walk(self._icon_function())
+            if isinstance(node, ast.Assign)
+            for target in node.targets
+            if isinstance(target, ast.Attribute)
+        ]
+        assert assigned, "the PhotoImage is not stored anywhere and will be collected"

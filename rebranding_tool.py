@@ -104,10 +104,17 @@ LOG_BUFFER_SIZE = 2000
 def set_window_icon(window) -> None:
     """Give a Tk window the application icon, whatever the platform.
 
-    Two files, because Tk needs two: ``iconbitmap`` reads the .ico and only
-    does so on Windows, and everywhere else the icon has to arrive as a
-    PhotoImage through ``iconphoto``. Proteus shipped only the .ico, so off
-    Windows the window carried the bare Tk feather.
+    Two independent attempts, and the independence is the point. The first
+    version tried ``iconbitmap`` on Windows and fell through to ``iconphoto``
+    only on the other platforms, with one ``try`` around both -- so when
+    ``iconbitmap`` raised, the fallback never ran and the window kept Tk's
+    default feather. Which is what was reported: the .ico and the .png were
+    both inside the executable and neither reached the window.
+
+    So the PhotoImage goes on first, because it works everywhere and Tk has
+    read PNG since 8.6, and ``iconbitmap`` is tried afterwards on Windows for
+    the sharper small sizes. If that one fails, what the first set stays set;
+    Tk raises before it changes anything, so a failure cannot undo it.
 
     The PhotoImage is kept on the window: Tk holds only a weak reference to
     it, and a garbage-collected image leaves a blank icon behind.
@@ -115,18 +122,21 @@ def set_window_icon(window) -> None:
     Never raises. A missing icon is a cosmetic problem, and no cosmetic
     problem should be a reason the program does not start.
     """
-    try:
-        if os.name == "nt":
-            ico = core.resource_path("app.ico")
-            if os.path.exists(ico):
-                window.iconbitmap(ico)
-                return
-        png = core.resource_path("app.png")
-        if os.path.exists(png):
+    png = core.resource_path("app.png")
+    if os.path.exists(png):
+        try:
             window._app_icon = tk.PhotoImage(file=png)
             window.iconphoto(True, window._app_icon)
-    except Exception:  # noqa: BLE001 — see the docstring
-        pass
+        except Exception:  # noqa: BLE001 — see the docstring
+            pass
+
+    if os.name == "nt":
+        ico = core.resource_path("app.ico")
+        if os.path.exists(ico):
+            try:
+                window.iconbitmap(ico)
+            except Exception:  # noqa: BLE001 — iconphoto already did the job
+                pass
 
 class RebrandingToolApp:
     """Main Rebranding Tool application."""
@@ -182,8 +192,10 @@ class RebrandingToolApp:
 
         # --- Setup ---
         self._apply_window_chrome()
-        self._set_window_icon()
         self._apply_theme()
+        # After the theme, not before: whatever a theme library does to the
+        # root on the way in, it cannot undo an icon set after it.
+        self._set_window_icon()
         self._create_widgets()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._pump_ui_queue()

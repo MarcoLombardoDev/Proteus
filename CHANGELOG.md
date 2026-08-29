@@ -148,6 +148,25 @@ deliberately summarised rather than itemised.
   `Proteus.exe`.
 
 ### Fixed
+- **The window came up under Tk's default feather, with both icon files
+  inside the executable.** Confirmed by reading them back out of the published
+  build: the `.ico` and the `.png` were there and correct. The fault was one
+  `try` around both attempts — `iconbitmap` raised, and the fallback that
+  would have set the PNG never ran, so nothing was set at all. The two are
+  independent attempts now: the PhotoImage goes on first, because it works
+  everywhere and Tk has read PNG since 8.6, and `iconbitmap` follows on
+  Windows for the sharper small sizes. Tk raises before it changes anything,
+  so a failure in the second cannot undo the first. The shape is pinned by a
+  test that parses the function and refuses to let one `try` hold both.
+- **The icon lost its frame below 32 pixels, so the four did not match.** The
+  frame was dropped at the small sizes on the reasoning that it costs more in
+  contrast than it returns in shape — a judgement about one icon rather than
+  about four. The products draw their window icon from different sources: Qt
+  scales the 512-pixel PNG, Tk picks the matching frame out of the `.ico`. So
+  the same product looked like two and the four looked like four families, one
+  with a black border and one without. One shape now, one letter apart, at
+  every size, and `tests/test_packaging.py` checks the frame is there in each
+  frame of the `.ico`.
 - **The `.ico` used PNG compression at every size.** Windows has accepted
   PNG-compressed icon frames since Vista, but the format every icon editor
   produces — and the one the shell has always read — is an uncompressed DIB
