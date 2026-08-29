@@ -1037,7 +1037,7 @@ for nothing. Without three machines,
 **[`.github/workflows/release.yml`](.github/workflows/release.yml)** builds all three on
 genuine GitHub runners, in one of two ways:
 
-1. **Push a tag matching `v*`** (e.g. `v1.3.0`). The workflow creates the release, builds
+1. **Push a tag matching `v*`** (e.g. `v1.0.0`). The workflow creates the release, builds
    on `windows-latest`, `macos-latest` and `ubuntu-latest`, smoke-tests each bundle with
    `--version` and `--help`, and attaches one archive per platform. Release assets need no
    login and never expire — this is the one to use for "here, download Proteus".

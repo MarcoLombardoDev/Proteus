@@ -14,7 +14,7 @@ This file is the inventory of what those binaries are and what licenses them.
 
 It was generated, not written from memory, by
 [`tools/licence_inventory.py`](tools/licence_inventory.py) run against
-the published `Proteus-1.3.0-linux-x64.tar.gz`. The table
+the published `Proteus-1.0.0-linux-x64.tar.gz`. The table
 below is literally the copy the release runner generated and packaged inside
 that archive as `licenses/THIRD-PARTY-LICENSES-linux-x64.md`, lifted out of it
 unchanged — so it describes the file somebody downloads rather than a build
@@ -110,7 +110,8 @@ cannot silently come back. `libtinfo` left with it.
 
 ## Licence texts travel with the build
 
-The v1.3.0 archives contained one executable and nothing else. A recursive
+The first archives published for this product contained one executable
+and nothing else. A recursive
 search of all three for `LICENSE`, `COPYING` or `NOTICE` returned nothing,
 which every BSD and MIT notice in the bundle requires, which the LGPL-2.1
 system libraries require in stronger terms, and which Proteus's own AGPL

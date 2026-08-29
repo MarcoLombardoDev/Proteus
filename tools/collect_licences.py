@@ -9,7 +9,8 @@
 
 """Assemble the licence texts that must travel inside a release archive.
 
-The v1.3.0 archives contained one executable and nothing else. A recursive
+The first archives published for this product contained one executable
+and nothing else. A recursive
 search of all three for LICENSE, COPYING or NOTICE returned nothing. That is
 not a formality: the BSD and MIT libraries frozen into that executable require
 their copyright notices be reproduced in binary distributions, the LGPL-2.1

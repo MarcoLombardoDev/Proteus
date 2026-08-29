@@ -80,6 +80,11 @@ deliberately summarised rather than itemised.
 - `CHANGELOG.md` — this file.
 
 ### Changed
+- **`THIRD-PARTY-LICENSES.md` regenerated from the published 1.0.0 archive**,
+  rather than still naming the archive of a version that no longer exists.
+  Every row came out identical, which is the answer worth having: the
+  renumbering and the launcher work changed nothing about what the bundle
+  contains.
 - **The release now fails if the tag and the program disagree about the
   version.** Nothing checked it, which is exactly how a `v1.0.0` tag could
   produce `Proteus-1.0.0-windows-x64.zip` containing a program that answers
@@ -143,6 +148,15 @@ deliberately summarised rather than itemised.
   `Proteus.exe`.
 
 ### Fixed
+- **The `.ico` used PNG compression at every size.** Windows has accepted
+  PNG-compressed icon frames since Vista, but the format every icon editor
+  produces — and the one the shell has always read — is an uncompressed DIB
+  below 256 pixels, with PNG only for the 256, which is the size where the
+  compression saves something worth saving. Explorer showing a stale or
+  generic icon for an executable whose resources are demonstrably correct is
+  exactly the shape of problem that convention exists to avoid, so
+  `tools/make_icon.py` now assembles the `.ico` itself and writes the
+  conventional thing. `tests/test_packaging.py` pins the format.
 - **Off Windows, the window had no icon at all.** Proteus shipped only an
   `.ico`, and Tk's `iconbitmap` reads that on Windows and nowhere else, so the
   Linux and macOS builds ran under the bare Tk feather. A PNG now travels with
