@@ -80,6 +80,10 @@ deliberately summarised rather than itemised.
 - `CHANGELOG.md` — this file.
 
 ### Changed
+- **One interface font across the four, named rather than left to a
+  default.** Segoe UI where the machine has it, with the equivalent on macOS
+  and Linux behind it, resolved once from a list the four products share.
+  Nothing depends any more on which family the toolkit happened to pick.
 - **The buttons come from the theme rather than from a palette of our own.**
   Proteus drew its own — its own blue, Arial bold — while Iris took its from
   ttkbootstrap, which is most of why the two read as different products. Every
@@ -167,6 +171,10 @@ deliberately summarised rather than itemised.
   `Proteus.exe`.
 
 ### Fixed
+- **Arial is gone.** It was hard-coded in thirty-one places here — the footer, the
+  log, the small labels — while the rest of the interface used whatever Tk
+  defaults to, which on Windows is Segoe UI. So those labels were the odd ones
+  out inside a single window, never mind across four products.
 - **The window came up under Tk's default feather, with both icon files
   inside the executable.** Confirmed by reading them back out of the published
   build: the `.ico` and the `.png` were there and correct. The fault was one

@@ -131,6 +131,59 @@ LOG_BUFFER_SIZE = 2000
 
 
 
+#: Interface font, in order of preference. The same list in all four products.
+#:
+#: Segoe UI first because it is what Windows uses for its own interface, and
+#: three of these four were already getting it there -- two by asking for it,
+#: one because Tk and Qt both default to it. The rest are the equivalent on
+#: the other platforms, so nothing has to fall back to a font chosen by
+#: whichever toolkit happened to be asked.
+#:
+#: Arial is deliberately not on this list. It was hard-coded in a handful of
+#: places here, which is what made the small labels the odd ones out.
+UI_FONT_PREFERENCE = (
+    "Segoe UI",          # Windows
+    "SF Pro Text",       # macOS 11+
+    "Helvetica Neue",    # older macOS
+    "Noto Sans",         # most Linux desktops
+    "DejaVu Sans",       # the rest
+)
+
+_UI_FONT_FAMILY: str | None = None
+
+
+def ui_font_family() -> str:
+    """The first font in UI_FONT_PREFERENCE this machine actually has.
+
+    Resolved once and remembered: ``families()`` walks the whole font
+    database, and this is asked for on every label built.
+
+    Falls back to whatever Tk itself would have used, which is the right
+    answer for a machine that has none of these -- better a font the system
+    chose than a name it will silently substitute.
+    """
+    global _UI_FONT_FAMILY
+    if _UI_FONT_FAMILY is not None:
+        return _UI_FONT_FAMILY
+
+    try:
+        from tkinter import font as tkfont
+
+        available = {name.lower() for name in tkfont.families()}
+        for family in UI_FONT_PREFERENCE:
+            if family.lower() in available:
+                _UI_FONT_FAMILY = family
+                return family
+        _UI_FONT_FAMILY = str(tkfont.nametofont("TkDefaultFont").actual("family"))
+    except Exception:  # noqa: BLE001 - a font is never worth failing to start
+        _UI_FONT_FAMILY = "TkDefaultFont"
+    return _UI_FONT_FAMILY
+
+
+def ui_font(size: int, *styles: str) -> tuple:
+    """A Tk font spec in the interface font: ``ui_font(9, "bold")``."""
+    return (ui_font_family(), size, *styles)
+
 def maximise(window) -> None:
     """Open the window filling the screen.
 
@@ -363,7 +416,7 @@ class RebrandingToolApp:
             style_name = f"{name.capitalize()}.TButton"
             self.style.configure(
                 style_name,
-                font=("Arial", 9, "bold"),
+                font=ui_font(9, "bold"),
                 background=base,
                 foreground="white",
                 bordercolor=base,
@@ -392,7 +445,7 @@ class RebrandingToolApp:
         if not self._themed_buttons:
             self.style.configure(
                 "Outline.TButton",
-                font=("Arial", 9),
+                font=ui_font(9),
                 foreground=BRAND_BLUE,
                 padding=(10, 6),
             )
@@ -509,7 +562,7 @@ class RebrandingToolApp:
         ttk.Label(
             self.root,
             text=t("VERSION {version}").format(version=APP_VERSION),
-            font=("Arial", 8),
+            font=ui_font(8),
             foreground="#888888",
         ).place(relx=1.0, y=10, anchor=tk.NE, x=-12)
 
@@ -556,7 +609,7 @@ class RebrandingToolApp:
         self._footer_label = ttk.Label(
             centre,
             text=LICENSE_NOTICE,
-            font=("Arial", 8),
+            font=ui_font(8),
             foreground="#8a94a0",
         )
         self._footer_label.pack(side=tk.LEFT)
@@ -564,7 +617,7 @@ class RebrandingToolApp:
         self._footer_email = ttk.Label(
             centre,
             text=CONTACT_EMAIL,
-            font=("Arial", 8, "underline"),
+            font=ui_font(8, "underline"),
             foreground=BRAND_BLUE,
             cursor="hand2",
         )
@@ -611,13 +664,13 @@ class RebrandingToolApp:
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
         ttk.Label(top, text=t("Search Configuration"),
-                  font=("Arial", 13, "bold")).pack(side=tk.LEFT, padx=16)
+                  font=ui_font(13, "bold")).pack(side=tk.LEFT, padx=16)
 
         # Language picker: kept next to the title so it is discoverable
         # without hunting through a settings dialog.
         lang_box = ttk.Frame(top)
         lang_box.pack(side=tk.RIGHT, padx=16)
-        ttk.Label(lang_box, text=t("Language:"), font=("Arial", 9)).pack(side=tk.LEFT,
+        ttk.Label(lang_box, text=t("Language:"), font=ui_font(9)).pack(side=tk.LEFT,
                                                                         padx=(0, 4))
         self._language_combo = ttk.Combobox(
             lang_box, textvariable=self._language_var, state="readonly",
@@ -629,7 +682,7 @@ class RebrandingToolApp:
         ttk.Label(
             parent,
             text=t("Set the folders and the search key, then start the scan."),
-            font=("Arial", 10), foreground="#666666",
+            font=ui_font(10), foreground="#666666",
         ).pack(anchor=tk.W, padx=24, pady=(0, 16))
 
         # --- Source folder ---
@@ -638,7 +691,7 @@ class RebrandingToolApp:
         ttk.Label(
             src_frame,
             text=t("Folder holding the new logo files (the replacement source):"),
-            font=("Arial", 9), foreground="#555555",
+            font=ui_font(9), foreground="#555555",
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(8, 2))
         ttk.Label(src_frame, text=t("Path:")).grid(row=1, column=0, sticky=tk.W,
                                                    padx=8, pady=4)
@@ -656,7 +709,7 @@ class RebrandingToolApp:
             scan_frame,
             text=t("Folder (and subfolders) to search for the files to replace "
                    "(e.g. a server or network share):"),
-            font=("Arial", 9), foreground="#555555",
+            font=ui_font(9), foreground="#555555",
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(8, 2))
         ttk.Label(scan_frame, text=t("Path:")).grid(row=1, column=0, sticky=tk.W,
                                                     padx=8, pady=4)
@@ -675,7 +728,7 @@ class RebrandingToolApp:
                    "Separate multiple patterns with «;».\n"
                    "Examples: logo*.png  |  banner_*.jpg  |  icon_??.svg  |  "
                    "logo*.png; logo*.svg"),
-            font=("Arial", 9), foreground="#555555", justify=tk.LEFT,
+            font=ui_font(9), foreground="#555555", justify=tk.LEFT,
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(8, 2))
         mode_row = ttk.Frame(key_frame)
         mode_row.grid(row=1, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(2, 4))
@@ -699,7 +752,7 @@ class RebrandingToolApp:
                    "are called.\n"
                    "Raster formats only: SVG, PDF and EPS cannot be matched by "
                    "content."),
-            font=("Arial", 9), foreground="#555555", justify=tk.LEFT,
+            font=ui_font(9), foreground="#555555", justify=tk.LEFT,
         ).grid(row=3, column=0, columnspan=3, sticky=tk.W, padx=8, pady=(6, 2))
 
         ttk.Label(key_frame, text=t("Reference images:")).grid(row=4, column=0,
@@ -711,7 +764,7 @@ class RebrandingToolApp:
                                           command=self._choose_references,
                                           **self.btn("outline"))
         self._btn_references.pack(side=tk.LEFT)
-        self._references_label = ttk.Label(ref_row, text="", font=("Arial", 9),
+        self._references_label = ttk.Label(ref_row, text="", font=ui_font(9),
                                            foreground="#555555")
         self._references_label.pack(side=tk.LEFT, padx=10)
 
@@ -748,7 +801,7 @@ class RebrandingToolApp:
                 warn,
                 text=t("⚠️  Pillow (PIL) is not installed: previews and resolutions "
                        "will be unavailable. Install it with: pip install pillow"),
-                font=("Arial", 9), foreground="#cc6600",
+                font=ui_font(9), foreground="#cc6600",
             ).pack(anchor=tk.W)
 
         # --- Buttons ---
@@ -808,7 +861,7 @@ class RebrandingToolApp:
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
         ttk.Label(top, text=t("Scan Results"),
-                  font=("Arial", 13, "bold")).pack(side=tk.LEFT)
+                  font=ui_font(13, "bold")).pack(side=tk.LEFT)
         self._scan_count_lbl = ttk.Label(top, text=t("No scan performed yet"),
                                          foreground="#888888")
         self._scan_count_lbl.pack(side=tk.RIGHT, padx=8)
@@ -817,7 +870,7 @@ class RebrandingToolApp:
             parent,
             text=t("Review the files found, then start the match analysis. "
                    "Double-click a row to open its containing folder."),
-            font=("Arial", 10), foreground="#666666",
+            font=ui_font(10), foreground="#666666",
         ).pack(anchor=tk.W, padx=8, pady=(0, 10))
 
         # Findings the scan could not handle. Packed before the expanding tree
@@ -826,7 +879,7 @@ class RebrandingToolApp:
         self._problem_bar = ttk.Frame(parent)
         self._problem_lbl = ttk.Label(self._problem_bar, text="",
                                       foreground=PROBLEM_COLOUR,
-                                      font=("Arial", 9, "bold"))
+                                      font=ui_font(9, "bold"))
         self._problem_lbl.pack(side=tk.LEFT, padx=8)
         self._btn_problems = ttk.Button(
             self._problem_bar, text=t("Show details"),
@@ -879,7 +932,7 @@ class RebrandingToolApp:
                                          highlightbackground="#cccccc")
         self._preview_canvas.pack(side=tk.LEFT, padx=8, pady=6)
         self._preview_info = ttk.Label(preview_outer, text=t("Select a file to preview it"),
-                                       font=("Arial", 9), foreground="#888888",
+                                       font=ui_font(9), foreground="#888888",
                                        justify=tk.LEFT)
         self._preview_info.pack(side=tk.LEFT, padx=12, pady=6, anchor=tk.W)
 
@@ -887,7 +940,7 @@ class RebrandingToolApp:
         legend.pack(fill=tk.X, padx=8, pady=(2, 0))
         ttk.Label(legend,
                   text=t("orange = found by content, below the confident threshold"),
-                  font=("Arial", 8), foreground="#888888").pack(side=tk.LEFT)
+                  font=ui_font(8), foreground="#888888").pack(side=tk.LEFT)
 
         btn_frame = ttk.Frame(parent)
         btn_frame.pack(fill=tk.X, padx=8, pady=8)
@@ -910,7 +963,7 @@ class RebrandingToolApp:
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
         ttk.Label(top, text=t("Proposed Matches"),
-                  font=("Arial", 13, "bold")).pack(side=tk.LEFT)
+                  font=ui_font(13, "bold")).pack(side=tk.LEFT)
         self._match_count_lbl = ttk.Label(top, text="", foreground="#888888")
         self._match_count_lbl.pack(side=tk.RIGHT, padx=8)
 
@@ -920,7 +973,7 @@ class RebrandingToolApp:
                    "(same format, closest resolution, most similar name).\n"
                    "Click the ✓ column or press space to include/exclude a row; "
                    "double-click to pick a different source."),
-            font=("Arial", 9), foreground="#555555", justify=tk.LEFT,
+            font=ui_font(9), foreground="#555555", justify=tk.LEFT,
         ).pack(anchor=tk.W, padx=8, pady=(0, 6))
 
         mf = ttk.Frame(parent)
@@ -979,10 +1032,10 @@ class RebrandingToolApp:
                                         highlightthickness=1)
         self._target_canvas.pack(side=tk.LEFT, padx=6, pady=4)
         self._target_preview_info = ttk.Label(target_box, text=t("Select a row"),
-                                              font=("Arial", 8), justify=tk.LEFT)
+                                              font=ui_font(8), justify=tk.LEFT)
         self._target_preview_info.pack(side=tk.LEFT, padx=6, pady=4, anchor=tk.W)
 
-        ttk.Label(preview_outer, text="➜", font=("Arial", 20),
+        ttk.Label(preview_outer, text="➜", font=ui_font(20),
                   foreground=BRAND_BLUE).pack(side=tk.LEFT, padx=4)
 
         src_box = ttk.LabelFrame(preview_outer, text=t(" Proposed New Logo "))
@@ -991,14 +1044,14 @@ class RebrandingToolApp:
                                      highlightthickness=1)
         self._src_canvas.pack(side=tk.LEFT, padx=6, pady=4)
         self._src_preview_info = ttk.Label(src_box, text=t("Select a row"),
-                                           font=("Arial", 8), justify=tk.LEFT)
+                                           font=ui_font(8), justify=tk.LEFT)
         self._src_preview_info.pack(side=tk.LEFT, padx=6, pady=4, anchor=tk.W)
 
         leg = ttk.Frame(parent)
         leg.pack(fill=tk.X, padx=8, pady=2)
         ttk.Label(leg, text=t("✓ = included   ✗ = excluded   red = no match   "
                               "orange = weak match, worth checking"),
-                  font=("Arial", 8), foreground="#888888").pack(side=tk.LEFT)
+                  font=ui_font(8), foreground="#888888").pack(side=tk.LEFT)
 
         btn_f = ttk.Frame(parent)
         btn_f.pack(fill=tk.X, padx=8, pady=8)
@@ -1025,7 +1078,7 @@ class RebrandingToolApp:
         top = ttk.Frame(parent)
         top.pack(fill=tk.X, padx=8, pady=(12, 4))
         ttk.Label(top, text=t("File Replacement"),
-                  font=("Arial", 13, "bold")).pack(side=tk.LEFT, padx=16)
+                  font=ui_font(13, "bold")).pack(side=tk.LEFT, padx=16)
 
         ttk.Label(
             parent,
@@ -1033,13 +1086,13 @@ class RebrandingToolApp:
                    "with their matching source files.\n"
                    "With backup enabled the operation can be undone from "
                    "«Restore backups»."),
-            font=("Arial", 10), foreground="#666666",
+            font=ui_font(10), foreground="#666666",
         ).pack(anchor=tk.W, padx=24, pady=(0, 14))
 
         summary = ttk.LabelFrame(parent, text=t(" Operation summary "))
         summary.pack(fill=tk.X, padx=24, pady=6)
         self._replace_summary_lbl = ttk.Label(summary, text=t("No operation pending."),
-                                              font=("Arial", 10), justify=tk.LEFT)
+                                              font=ui_font(10), justify=tk.LEFT)
         self._replace_summary_lbl.pack(padx=12, pady=10, anchor=tk.W)
 
         opts = ttk.Frame(parent)
@@ -1569,7 +1622,7 @@ class RebrandingToolApp:
             self._preview_canvas.create_image(60, 45, image=thumb, anchor=tk.CENTER)
         else:
             self._preview_canvas.create_text(60, 45, text=t("N/A"), fill="#aaaaaa",
-                                             font=("Arial", 11))
+                                             font=ui_font(11))
 
         self._preview_info.config(
             text=t("Name: {name}\nFormat: {fmt}\nSize: {size}\n"
@@ -1833,10 +1886,10 @@ class RebrandingToolApp:
                   text=t("File to replace: {name} ({fmt}, {dim})").format(
                       name=match.target.name, fmt=match.target.fmt,
                       dim=match.target.dim_str),
-                  font=("Arial", 10, "bold")).pack(anchor=tk.W, padx=12, pady=(12, 4))
+                  font=ui_font(10, "bold")).pack(anchor=tk.W, padx=12, pady=(12, 4))
         ttk.Label(dialog,
                   text=t("Sources with a matching format are listed first."),
-                  font=("Arial", 9), foreground="#666666").pack(anchor=tk.W, padx=12)
+                  font=ui_font(9), foreground="#666666").pack(anchor=tk.W, padx=12)
 
         list_frame = ttk.Frame(dialog)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=8)
