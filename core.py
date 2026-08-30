@@ -18,6 +18,7 @@ Having no GUI dependency makes this module fully testable headlessly.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import datetime
 import difflib
@@ -31,10 +32,10 @@ import sys
 import tempfile
 import threading
 import xml.etree.ElementTree as ET
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
 
 import i18n
 import office
@@ -346,7 +347,7 @@ def size_diff(dim1: tuple[int, int] | None, dim2: tuple[int, int] | None) -> flo
 # Perceptual hashing
 # ---------------------------------------------------------------------------
 
-def _prepare_for_hash(image) -> "Image.Image":
+def _prepare_for_hash(image) -> Image.Image:
     """
     Flatten an image to a grayscale grid suitable for hashing.
 
@@ -556,8 +557,8 @@ class FileInfo:
         return self.similarity is not None and self.similarity < SIMILARITY_CONFIDENT
 
     @classmethod
-    def from_embedded(cls, image: "office.EmbeddedImage",
-                      similarity: float | None = None) -> "FileInfo":
+    def from_embedded(cls, image: office.EmbeddedImage,
+                      similarity: float | None = None) -> FileInfo:
         """
         Describe a picture stored inside an Office package.
 
@@ -570,10 +571,8 @@ class FileInfo:
             try:
                 dim = get_image_dimensions(temp)
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(temp)
-                except OSError:
-                    pass
 
         return cls(
             path=image.key,
@@ -587,8 +586,8 @@ class FileInfo:
         )
 
     @classmethod
-    def from_pdf_image(cls, image: "pdf_module.EmbeddedImage",
-                       similarity: float | None = None) -> "FileInfo":
+    def from_pdf_image(cls, image: pdf_module.EmbeddedImage,
+                       similarity: float | None = None) -> FileInfo:
         """Describe a raster image stored inside a PDF."""
         dim = None
         temp = pdf_module.extract_to_temp(image.document, image.entry)
@@ -596,10 +595,8 @@ class FileInfo:
             try:
                 dim = get_image_dimensions(temp)
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(temp)
-                except OSError:
-                    pass
 
         return cls(
             path=image.key,
@@ -614,7 +611,7 @@ class FileInfo:
         )
 
     @classmethod
-    def from_path(cls, path: str, similarity: float | None = None) -> "FileInfo":
+    def from_path(cls, path: str, similarity: float | None = None) -> FileInfo:
         stat = os.stat(path)
         return cls(
             path=path,
@@ -984,10 +981,8 @@ def scan_office_documents(
                 try:
                     similarity = best_similarity(temp, refs)
                 finally:
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(temp)
-                    except OSError:
-                        pass
                 if similarity < threshold:
                     continue
             found.append(FileInfo.from_embedded(image, similarity=similarity))
@@ -1069,10 +1064,8 @@ def scan_pdf_documents(
                 try:
                     similarity = best_similarity(temp, refs)
                 finally:
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(temp)
-                    except OSError:
-                        pass
                 if similarity < threshold:
                     continue
             found.append(FileInfo.from_pdf_image(image, similarity=similarity))
@@ -1323,10 +1316,8 @@ def replace_file(
 
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(tmp_path)
-            except OSError:
-                pass
 
 
 def replace_in_document(

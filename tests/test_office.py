@@ -30,6 +30,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
+
 import core  # noqa: E402
 import office  # noqa: E402
 
@@ -229,7 +231,7 @@ def test_keys_round_trip(documents):
 def test_replacement_changes_the_picture_and_keeps_the_document_valid(documents, kind):
     document = documents[kind]
     entry = office.list_images(document)[0][0].entry
-    new_bytes = open(documents["new"], "rb").read()
+    new_bytes = Path(documents["new"]).read_bytes()
 
     office.write_replacements(document, {entry: new_bytes})
 
@@ -290,7 +292,7 @@ def test_a_failed_rewrite_leaves_the_document_intact(documents, monkeypatch):
     """The package is rebuilt, so a failure must not destroy the original."""
     document = documents["docx"]
     entry = office.list_images(document)[0][0].entry
-    original = open(document, "rb").read()
+    original = Path(document).read_bytes()
 
     real_writestr = zipfile.ZipFile.writestr
 
@@ -304,7 +306,7 @@ def test_a_failed_rewrite_leaves_the_document_intact(documents, monkeypatch):
     with pytest.raises(OSError):
         office.write_replacements(document, {entry: b"new"})
 
-    assert open(document, "rb").read() == original
+    assert Path(document).read_bytes() == original
     leftovers = [f for f in os.listdir(os.path.dirname(document))
                  if f.startswith(".proteus_")]
     assert leftovers == []
@@ -340,7 +342,7 @@ def test_the_frame_does_not_follow_the_picture(documents):
     square = mark(os.path.join(os.path.dirname(documents["new"]), "square.png"),
                   size=(200, 200), colour=(20, 90, 170))
     entry = office.list_images(document)[0][0].entry
-    office.write_replacements(document, {entry: open(square, "rb").read()})
+    office.write_replacements(document, {entry: Path(square).read_bytes()})
 
     after = docx.Document(document).inline_shapes[0]
     assert after.width / after.height == pytest.approx(ratio_before), (
@@ -440,14 +442,14 @@ def test_one_document_is_backed_up_once_however_many_pictures_it_holds(tmp_path)
 
 
 def test_dry_run_does_not_touch_documents(documents):
-    before = open(documents["docx"], "rb").read()
+    before = Path(documents["docx"]).read_bytes()
     targets = core.scan_office_documents(documents["folder"])
     sources = [core.FileInfo.from_path(documents["new"])]
 
     report = core.replace_all(core.build_matches(targets, sources),
                               backup=True, dry_run=True)
     assert report.ok == 3
-    assert open(documents["docx"], "rb").read() == before
+    assert Path(documents["docx"]).read_bytes() == before
     assert not os.path.exists(documents["docx"] + ".bak")
 
 

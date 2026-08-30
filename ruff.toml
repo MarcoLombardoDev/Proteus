@@ -1,0 +1,20 @@
+# The lint configuration the sibling products share. Proteus and Iris keep it
+# in a ruff.toml rather than in pyproject.toml, which neither of them has: the
+# rules are what matter, not where they are written down.
+line-length = 100
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = ["B008", "SIM108"]
+
+[lint.per-file-ignores]
+# A defaults table written with dict(key=value) reads better in a test helper
+# than a brace literal, and none of it is logic. SIM102: _find_widget's nested
+# ifs are two separate questions -- is this the right kind of widget, and does
+# it carry the right text -- and collapsing them makes the recursive call below
+# look like part of the type check.
+"tests/*" = ["E501", "C408", "SIM102"]
+# The translation catalogues: one message per line, and a wrapped translation
+# is harder to read and harder to diff than a long one.
+"i18n.py" = ["E501"]

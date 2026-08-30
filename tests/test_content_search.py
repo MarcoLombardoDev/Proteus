@@ -25,11 +25,12 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
+
 import core  # noqa: E402
 
 pytest.importorskip("PIL", reason="Pillow is needed to build test images")
 from PIL import Image, ImageDraw  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers: a recognisable "logo" and an unrelated picture
@@ -248,7 +249,7 @@ def test_content_scan_skips_backups_and_vector_files(tmp_path):
     scan = tmp_path / "share"
     original = save(logo_image(), scan / "header_bg.png")
     # Written as raw bytes: PIL cannot infer a format from a ".bak" suffix.
-    (scan / "header_bg.png.bak").write_bytes(open(original, "rb").read())
+    (scan / "header_bg.png.bak").write_bytes(Path(original).read_bytes())
     (scan / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
     reference = save(logo_image(), tmp_path / "ref.png")
 

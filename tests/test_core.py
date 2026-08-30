@@ -19,11 +19,12 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
+
 import core  # noqa: E402
 
 PIL = pytest.importorskip("PIL", reason="Pillow is needed to build test images")
 from PIL import Image  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -413,7 +414,7 @@ def test_replace_file_leaves_target_intact_on_copy_failure(tmp_path, monkeypatch
     """A copy that fails halfway must not truncate the original file."""
     target = make_image(tmp_path / "t" / "logo.png", (10, 10))
     source = make_image(tmp_path / "s" / "logo.png", (20, 20))
-    original = open(target, "rb").read()
+    original = Path(target).read_bytes()
 
     real_copy = core.shutil.copy2
 
@@ -426,7 +427,7 @@ def test_replace_file_leaves_target_intact_on_copy_failure(tmp_path, monkeypatch
     outcome = core.replace_file(target, source, backup=False)
 
     assert outcome.status == "error"
-    assert open(target, "rb").read() == original
+    assert Path(target).read_bytes() == original
     leftovers = [f for f in os.listdir(os.path.dirname(target))
                  if f.startswith(".proteus_")]
     assert leftovers == []
@@ -509,7 +510,7 @@ def test_export_matches_csv(tmp_path):
     destination = str(tmp_path / "out.csv")
     core.export_matches_csv(matches, destination)
 
-    content = open(destination, encoding="utf-8-sig").read()
+    content = Path(destination).read_text(encoding="utf-8-sig")
     assert "File to Replace" in content
     assert "YES" in content and "NO" in content
     assert content.count("\n") >= 3
@@ -522,7 +523,7 @@ def test_export_report_csv(tmp_path):
     ])
     destination = str(tmp_path / "report.csv")
     core.export_report_csv(report, destination)
-    content = open(destination, encoding="utf-8-sig").read()
+    content = Path(destination).read_text(encoding="utf-8-sig")
     assert "OK" in content and "ERROR" in content and "permission denied" in content
 
 

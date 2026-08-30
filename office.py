@@ -28,6 +28,7 @@ Deliberately *not* handled:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import posixpath
 import tempfile
@@ -279,10 +280,8 @@ def write_replacements(document: str, replacements: dict[str, bytes]) -> None:
         tmp_path = None
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(tmp_path)
-            except OSError:
-                pass
 
 
 # ---------------------------------------------------------------------------

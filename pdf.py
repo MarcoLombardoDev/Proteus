@@ -33,6 +33,7 @@ tool fails to replace without telling anyone is worse than one it refuses.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from dataclasses import dataclass
@@ -387,7 +388,5 @@ def write_replacements(document: str, replacements: dict[str, str]) -> None:
         tmp_path = None
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(tmp_path)
-            except OSError:
-                pass

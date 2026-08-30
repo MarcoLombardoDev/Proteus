@@ -38,7 +38,8 @@ bug report.
 
 from __future__ import annotations
 
-from core import APP_NAME, APP_VERSION as __version__
+from core import APP_NAME
+from core import APP_VERSION as __version__
 
 
 def _toolkit() -> list[str]:

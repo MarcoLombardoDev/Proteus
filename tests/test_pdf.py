@@ -27,6 +27,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
+
 import core  # noqa: E402
 import pdf  # noqa: E402
 
@@ -34,7 +36,6 @@ pytest.importorskip("PIL", reason="Pillow is needed to build test images")
 pypdf = pytest.importorskip("pypdf", reason="pypdf is needed for PDF support")
 
 from PIL import Image, ImageDraw  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -236,12 +237,12 @@ def test_a_stale_entry_refuses_to_write(brochure, tmp_path):
     """
     new = mark(tmp_path / "new" / "logo.png", colour=(20, 90, 170))
     images, _ = pdf.list_images(brochure)
-    before = open(brochure, "rb").read()
+    before = Path(brochure).read_bytes()
 
     with pytest.raises(ValueError):
         pdf.write_replacements(brochure, {images[0].entry: (new, 999_999)})
 
-    assert open(brochure, "rb").read() == before, "the file must be untouched"
+    assert Path(brochure).read_bytes() == before, "the file must be untouched"
 
 
 def test_a_whole_campaign_backs_the_pdf_up_once(brochure, tmp_path):
@@ -268,7 +269,7 @@ def test_a_whole_campaign_backs_the_pdf_up_once(brochure, tmp_path):
 
 def test_a_dry_run_writes_nothing(brochure, tmp_path):
     new = mark(tmp_path / "new" / "logo.png", colour=(20, 90, 170))
-    before = open(brochure, "rb").read()
+    before = Path(brochure).read_bytes()
     images, _ = pdf.list_images(brochure)
     target = core.FileInfo.from_pdf_image(images[0])
 
@@ -277,7 +278,7 @@ def test_a_dry_run_writes_nothing(brochure, tmp_path):
         backup=True, dry_run=True)
 
     assert report.ok == 1
-    assert open(brochure, "rb").read() == before
+    assert Path(brochure).read_bytes() == before
     assert not [f for f in os.listdir(tmp_path) if f.endswith(".bak")]
 
 
@@ -356,8 +357,7 @@ def test_a_signed_pdf_is_refused(tmp_path, brochure):
     Any byte written into a signed PDF invalidates the signature, so it is
     reported instead of quietly broken.
     """
-    from pypdf.generic import (ArrayObject, DictionaryObject, NameObject,
-                               NumberObject)
+    from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject
 
     writer = pypdf.PdfWriter(clone_from=brochure)
     field = DictionaryObject({NameObject("/FT"): NameObject("/Sig")})

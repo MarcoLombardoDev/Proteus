@@ -28,7 +28,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import build  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Console encoding
 # ---------------------------------------------------------------------------
@@ -55,7 +54,7 @@ def test_force_utf8_output_makes_a_legacy_codepage_stream_safe(monkeypatch):
 
     print("🔍 Checking prerequisites...")
     stream.flush()
-    assert "Checking prerequisites".encode() in buffer.getvalue()
+    assert b"Checking prerequisites" in buffer.getvalue()
 
 
 def test_force_utf8_output_tolerates_a_non_reconfigurable_stream(monkeypatch):
@@ -92,8 +91,8 @@ def test_every_emoji_in_the_script_survives_the_fix():
 
 def test_add_data_separator_matches_the_platform():
     """PyInstaller wants ';' on Windows and ':' elsewhere."""
-    assert build.DATA_SEP == os.pathsep
-    assert build.DATA_SEP == (";" if os.name == "nt" else ":")
+    assert os.pathsep == build.DATA_SEP
+    assert (";" if os.name == "nt" else ":") == build.DATA_SEP
 
 
 def test_python_launcher_is_runnable():

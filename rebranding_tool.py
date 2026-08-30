@@ -17,19 +17,19 @@ does not depend on tkinter: this module only deals with presentation.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import gc
 import logging
 import os
 import re
 import threading
+import tkinter as tk
 import webbrowser
 from collections import deque
 from pathlib import Path
-from urllib.parse import quote
-
-import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from urllib.parse import quote
 
 import core
 import i18n
@@ -218,10 +218,8 @@ def maximise(window) -> None:
 
     # Mapped first, or every measurement below reads 1x1 and every
     # attempt looks like it failed.
-    try:
+    with contextlib.suppress(Exception):  # see the docstring
         window.update_idletasks()
-    except Exception:  # noqa: BLE001 — see the docstring
-        pass
 
     for attempt in (
         lambda: window.state("zoomed"),
@@ -269,10 +267,9 @@ def set_window_icon(window) -> None:
     if os.name == "nt":
         ico = core.resource_path("app.ico")
         if os.path.exists(ico):
-            try:
+            # iconphoto already did the job.
+            with contextlib.suppress(Exception):
                 window.iconbitmap(ico)
-            except Exception:  # noqa: BLE001 — iconphoto already did the job
-                pass
 
 class RebrandingToolApp:
     """Main Rebranding Tool application."""
@@ -395,10 +392,8 @@ class RebrandingToolApp:
             if "clam" in self.style.theme_names():
                 # 'clam' honours background/foreground on buttons; the native
                 # Windows theme ("vista") would ignore them.
-                try:
+                with contextlib.suppress(tk.TclError):
                     self.style.theme_use("clam")
-                except tk.TclError:
-                    pass
 
         if self._themed_buttons:
             # ttkbootstrap builds a style the first time it is asked for one.
@@ -1172,10 +1167,8 @@ class RebrandingToolApp:
         being forgotten.
         """
         current_tab = 0
-        try:
+        with contextlib.suppress(tk.TclError):
             current_tab = self.notebook.index("current")
-        except tk.TclError:
-            pass
 
         self._release_images()
         for child in list(self.root.winfo_children()):
@@ -1189,10 +1182,8 @@ class RebrandingToolApp:
         if self.matches:
             self._populate_match_tree()
 
-        try:
+        with contextlib.suppress(tk.TclError):
             self.notebook.select(current_tab)
-        except tk.TclError:
-            pass
 
     # ------------------------------------------------------------------
     # Background operations
@@ -1255,10 +1246,8 @@ class RebrandingToolApp:
     def _set_action_buttons(self, state):
         for btn in (self._btn_scan, self._btn_match, self._btn_execute,
                     self._btn_restore):
-            try:
+            with contextlib.suppress(tk.TclError):
                 btn.config(state=state)
-            except tk.TclError:
-                pass
 
     def _request_cancel(self):
         if self._busy():
@@ -1279,16 +1268,12 @@ class RebrandingToolApp:
         gc.enable()   # never leave it paused if we exit mid-operation
 
         if self._pump_after_id is not None:
-            try:
+            with contextlib.suppress(tk.TclError):
                 self.root.after_cancel(self._pump_after_id)
-            except tk.TclError:
-                pass
             self._pump_after_id = None
 
-        try:
+        with contextlib.suppress(tk.TclError):
             self.root.destroy()
-        except tk.TclError:
-            pass
 
     def _save_settings(self):
         core.save_settings({
@@ -1434,7 +1419,7 @@ class RebrandingToolApp:
                 cancel_event=self._cancel_event, on_error=walk_error,
             )
             found = [path for path, _ in hits]
-            similarity_by_path = {path: score for path, score in hits}
+            similarity_by_path = dict(hits)
         else:
             found = core.scan_files(scan, pattern, exclude_dirs=exclude,
                                     cancel_event=self._cancel_event,
@@ -1667,10 +1652,8 @@ class RebrandingToolApp:
         try:
             return cls._make_thumbnail(temp, size)
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(temp)
-            except OSError:
-                pass
 
     @staticmethod
     def _make_thumbnail(filepath: str, size):

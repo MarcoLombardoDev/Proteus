@@ -16,9 +16,10 @@ automatically where no display is available.
 
 from __future__ import annotations
 
+import contextlib
 import os
-import threading
 import sys
+import threading
 
 import pytest
 
@@ -58,10 +59,8 @@ def tk_root():
     root = tk.Tk()
     root.withdraw()
     yield root
-    try:
+    with contextlib.suppress(tk.TclError):
         root.destroy()
-    except tk.TclError:
-        pass
 
 
 @pytest.fixture
@@ -83,21 +82,15 @@ def app(tk_root, tmp_path, monkeypatch):
     instance._worker = None
     instance._closing = True
     if instance._pump_after_id is not None:
-        try:
+        with contextlib.suppress(tk.TclError):
             tk_root.after_cancel(instance._pump_after_id)
-        except tk.TclError:
-            pass
         instance._pump_after_id = None
 
     for child in list(tk_root.winfo_children()):
-        try:
+        with contextlib.suppress(tk.TclError):
             child.destroy()
-        except tk.TclError:
-            pass
-    try:
+    with contextlib.suppress(tk.TclError):
         tk_root.update()
-    except tk.TclError:
-        pass
 
 
 def make_image(path, size=(100, 50), color=(255, 0, 0), fmt=None):

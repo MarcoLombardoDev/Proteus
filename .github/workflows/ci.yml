@@ -7,6 +7,21 @@ on:
   workflow_dispatch:
 
 jobs:
+  # First, because it answers in under a minute and it answers for every file,
+  # including the ones no test imports. The rules are the ones the sibling
+  # products use, in ruff.toml; a finding here is a finding there.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ruff
+      - run: ruff check .
+
   test:
     name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}

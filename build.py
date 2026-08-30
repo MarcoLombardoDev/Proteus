@@ -13,6 +13,7 @@ Build script for Proteus - Rebranding Tool, using PyInstaller.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -40,11 +41,9 @@ def force_utf8_output() -> None:
     unrepresentable character degrades to a placeholder instead of raising.
     """
     for stream in (sys.stdout, sys.stderr):
-        try:
+        # Not a reconfigurable text stream (redirected, wrapped, closed).
+        with contextlib.suppress(AttributeError, ValueError, OSError):
             stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError, OSError):
-            # Not a reconfigurable text stream (redirected, wrapped, closed).
-            pass
 
 
 def python_launcher() -> list[str]:

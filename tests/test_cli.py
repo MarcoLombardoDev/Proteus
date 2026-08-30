@@ -25,6 +25,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
+
 import cli  # noqa: E402
 import core  # noqa: E402
 
@@ -68,13 +70,13 @@ def run(*args) -> int:
 # ---------------------------------------------------------------------------
 
 def test_a_run_without_apply_writes_nothing(tree, capsys):
-    before = open(tree["target"], "rb").read()
+    before = Path(tree["target"]).read_bytes()
 
     code = run("--scan", tree["scan"], "--source", tree["source"],
                "--reference", tree["reference"])
 
     assert code == cli.EXIT_OK
-    assert open(tree["target"], "rb").read() == before, (
+    assert Path(tree["target"]).read_bytes() == before, (
         "a dry run must be the default: an unattended job that overwrites "
         "because someone forgot a flag is the failure mode to design out"
     )
@@ -465,9 +467,9 @@ def test_an_interruption_uses_the_conventional_exit_code(monkeypatch):
 def _pdf_tree(tmp_path):
     """A share with one replaceable PDF and one vector-only PDF."""
     pytest.importorskip("pypdf")
+    import pypdf
     from PIL import Image
     from pypdf.generic import DecodedStreamObject, NameObject
-    import pypdf
 
     scan = tmp_path / "share"
     os.makedirs(scan, exist_ok=True)
@@ -573,9 +575,9 @@ def test_audit_needs_no_source_folder(tree, capsys):
 
 
 def test_audit_writes_nothing(tree):
-    before = open(tree["target"], "rb").read()
+    before = Path(tree["target"]).read_bytes()
     run("--scan", tree["scan"], "--reference", tree["reference"], "--audit")
-    assert open(tree["target"], "rb").read() == before
+    assert Path(tree["target"]).read_bytes() == before
 
 
 def test_audit_refuses_apply(tree):

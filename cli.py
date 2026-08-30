@@ -48,6 +48,7 @@ Examples
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 import time
@@ -530,10 +531,8 @@ def entry_point() -> int:
     # The progress output carries no emoji, but core messages might, and a
     # Windows console defaults to a legacy code page.
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(AttributeError, ValueError, OSError):
             stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError, OSError):
-            pass
 
     try:
         return main()
