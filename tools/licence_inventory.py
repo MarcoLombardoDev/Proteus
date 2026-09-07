@@ -665,6 +665,33 @@ def summarise(inventory: Inventory) -> None:
             print(f"  {entry.path}  ({entry.component})  {entry.evidence}")
 
 
+def missing_notices(inventory: Inventory, licences: str) -> list[str]:
+    """Distributions that put a binary in the bundle and no licence text in it.
+
+    Only the ones the *owner lookup* named. What that lookup returns is a real
+    distribution name, which is exactly what collect_licences.py writes its
+    directories under, so the two sides of the comparison are the same kind of
+    thing. Curated labels — a heading a human wrote for a family of libraries —
+    would report a gap on every build and are left out.
+
+    The failure it is here to catch: a dependency starts shipping a native
+    extension, the inventory attributes it happily, and its notice travels
+    nowhere. The inventory alone cannot see that; it only reports the rows it
+    could not attribute, and this one it could.
+    """
+    root = os.path.join(licences, "python")
+    if not os.path.isdir(root):
+        return []
+    shipped = {name.lower() for name in os.listdir(root)}
+    known = {name.lower() for name in _owners().values()}
+    named = {
+        entry.component
+        for entry in inventory.entries
+        if entry.origin == "wheel" and entry.component.lower() in known
+    }
+    return sorted(name for name in named if name.lower() not in shipped)
+
+
 def as_markdown(inventories: list[Inventory]) -> str:
     """The table that goes into the archive, one section per platform."""
     lines = [
@@ -710,6 +737,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--json", help="write the full inventory here")
     parser.add_argument("--markdown", help="write the per-platform table here")
+    parser.add_argument(
+        "--licences",
+        help="the licence tree going into the bundle, checked for a notice "
+             "per distribution",
+    )
     args = parser.parse_args(argv)
 
     inventories = []
@@ -735,7 +767,17 @@ def main(argv: list[str] | None = None) -> int:
             json.dump(payload, handle, indent=1, sort_keys=True)
         print(f"wrote {args.json}")
 
-    return UNRESOLVED_EXIT if any(inv.unresolved for inv in inventories) else 0
+    gaps = []
+    if args.licences:
+        for inv in inventories:
+            for name in missing_notices(inv, args.licences):
+                gaps.append(f"{inv.platform}: {name} ships a binary and no licence text")
+        for gap in gaps:
+            print(f"no notice: {gap}")
+
+    if any(inv.unresolved for inv in inventories) or gaps:
+        return UNRESOLVED_EXIT
+    return 0
 
 
 if __name__ == "__main__":

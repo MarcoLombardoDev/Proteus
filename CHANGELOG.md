@@ -11,6 +11,16 @@ deliberately summarised rather than itemised.
 
 ## [Unreleased]
 
+### Fixed
+- **The licence inventory now checks that every notice reached the archive.**
+  `tools/licence_inventory.py` gained `--licences`, and the release job passes
+  it the tree about to be packaged. The inventory reported the rows it could
+  not attribute and said nothing about a row it attributed perfectly to a
+  distribution whose licence text never made it into `licenses/` — which is
+  how this actually fails: a dependency starts shipping a native extension,
+  the inventory credits it happily, and its notice travels nowhere. Orion and
+  XIP already had this; Argus and Tyche gained it in the same pass.
+
 ### Added
 - **One icon across the four products: the initial, in black, on white, in a
   serif face.** Drawn by `tools/make_icon.py`, which the four share and which

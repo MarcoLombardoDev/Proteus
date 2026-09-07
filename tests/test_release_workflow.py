@@ -294,6 +294,25 @@ def test_the_bundle_is_inventoried_on_the_machine_that_built_it():
     )
 
 
+def test_the_inventory_checks_that_every_notice_reached_the_archive():
+    """The gap neither script can see on its own.
+
+    The inventory reports the rows it could not attribute. It says nothing
+    about a row it attributed perfectly to a distribution whose licence text
+    never made it into `licenses/` — and that is the way this fails in
+    practice: a dependency starts shipping a native extension, the inventory
+    credits it happily, and its notice travels nowhere.
+
+    `--licences` points the inventory at the tree about to be packaged and
+    makes it compare the two. Without it the release is checking half of what
+    it thinks it is.
+    """
+    inventory = step_named(build_steps(load_workflow()), "Inventory what the bundle ships")
+    assert "--licences build/licenses" in inventory["run"], (
+        "the inventory never checks that each distribution's notice is in the tree"
+    )
+
+
 def test_an_unattributed_binary_warns_rather_than_failing_the_release():
     """Blocking a release on an unresolved row would only encourage guessing.
 

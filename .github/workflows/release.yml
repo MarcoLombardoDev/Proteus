@@ -208,6 +208,7 @@ jobs:
           set +e
           python tools/licence_inventory.py \
             --bundle "${{ matrix.asset }}=build/$APP_NAME" \
+            --licences build/licenses \
             --markdown "build/licenses/THIRD-PARTY-LICENSES-${{ matrix.asset }}.md"
           status=$?
           set -e
@@ -220,7 +221,8 @@ jobs:
           # into a warning, and Windows and macOS published without it.
           case "$status" in
             0) ;;
-            2) echo "::warning::some binaries could not be attributed; see the report" ;;
+            2) echo "::warning::some binaries could not be attributed, or a "\
+                    "distribution shipped no notice; see the report" ;;
             *) echo "::error::the inventory script exited $status without writing a report"
                exit "$status" ;;
           esac
