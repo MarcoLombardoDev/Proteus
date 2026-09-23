@@ -20,6 +20,15 @@ deliberately summarised rather than itemised.
   shipped three releases with no inventory in them that way — the path it was
   given did not exist and every run said "warning" and carried on. The presence
   of the file can tell the two apart where the exit code cannot.
+- **A Windows test was stricter than the program it tests.** A
+  `windows-latest` runner turned up with a Tk missing `::msgcat::mcmset` —
+  part of its own library — so `ttkbootstrap` could not initialise and the
+  theme test failed. The application handles exactly that: it wraps the same
+  call and falls back to the standard ttk theme with a logged warning, so a
+  machine like that gets the program without the bootstrap palette rather
+  than no program. The test now skips for the same reason, and says so; the
+  assertion on the palette itself is unchanged, because a wrong colour is
+  still a failure.
 - **The console says what the wait actually is.** It said the first launch was
   the slow one because Windows checks every file before running any of them,
   which was true of a folder build. This is one file that unpacks itself into

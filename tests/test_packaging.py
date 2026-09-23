@@ -498,7 +498,21 @@ class TestLooksLikeTheOthers:
         except tk.TclError as exc:
             pytest.skip(f"no display: {exc}")
         try:
-            style = tb.Style()
+            try:
+                style = tb.Style()
+            except tk.TclError as exc:
+                # Not a palette failure. Tcl could not give ttkbootstrap
+                # something it needs -- a GitHub windows-latest runner turned
+                # up without ``::msgcat::mcmset``, which is Tk failing to
+                # provide part of its own library -- and a toolkit that cannot
+                # start says nothing about which colour it would have used.
+                #
+                # This is also the one case the application itself tolerates:
+                # rebranding_tool.py wraps exactly this call and falls back to ttk
+                # with a logged warning, so a machine like that gets Proteus
+                # without the bootstrap theme rather than no Proteus. The test was
+                # stricter than the program, which is the wrong way round.
+                pytest.skip(f"ttkbootstrap cannot start here: {exc}")
             for name in self.PREFERENCE:
                 try:
                     style.theme_use(name)
