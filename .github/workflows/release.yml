@@ -205,13 +205,25 @@ jobs:
       - name: Inventory what the bundle ships
         shell: bash
         run: |
+          report="build/licenses/THIRD-PARTY-LICENSES-${{ matrix.asset }}.md"
+
           set +e
           python tools/licence_inventory.py \
             --bundle "${{ matrix.asset }}=build/$APP_NAME" \
             --licences build/licenses \
-            --markdown "build/licenses/THIRD-PARTY-LICENSES-${{ matrix.asset }}.md"
+            --markdown "$report"
           status=$?
           set -e
+
+          # argparse exits 2 as well, and so does an inventory that wrote its
+          # report and wants a human to look at some rows. The case below
+          # cannot tell them apart and maps 2 to a warning nobody reads, so a
+          # mistyped path would ship an archive with no inventory in it. The
+          # file either exists or the step fails.
+          if [ ! -s "$report" ]; then
+            echo "::error::the inventory exited $status and wrote no report"
+            exit 1
+          fi
 
           # 2 means the report was written and some rows in it need a human.
           # Anything else means the script did not finish, and the archive

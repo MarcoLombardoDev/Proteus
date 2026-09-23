@@ -12,6 +12,24 @@ deliberately summarised rather than itemised.
 ## [Unreleased]
 
 ### Fixed
+
+- **A release step that writes no inventory now fails** instead of warning.
+  `argparse` exits 2 on a bad argument, and so does an inventory that wrote its
+  report and wants a human to read some rows; the `case` statement could not
+  tell them apart and mapped 2 to a warning nobody reads. A sibling product
+  shipped three releases with no inventory in them that way — the path it was
+  given did not exist and every run said "warning" and carried on. The presence
+  of the file can tell the two apart where the exit code cannot.
+
+### Documentation
+
+- **CLAUDE.md records the family's build-shape rule**: one executable per
+  product, no folder builds, and what that costs. This repository already built
+  that way; the rule is now written down and the other three have been brought
+  into line with it.
+
+
+### Fixed
 - **The licence inventory now checks that every notice reached the archive.**
   `tools/licence_inventory.py` gained `--licences`, and the release job passes
   it the tree about to be packaged. The inventory reported the rows it could

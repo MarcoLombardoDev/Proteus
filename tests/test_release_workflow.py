@@ -684,3 +684,18 @@ def test_the_version_comparison_survives_a_windows_line_ending():
     assert "--version | tr -d" in step["run"], (
         "the version is compared without stripping the carriage return"
     )
+
+
+def test_an_inventory_that_writes_no_report_fails_the_build():
+    """An exit code cannot tell a mistyped path from rows needing review.
+
+    ``argparse`` exits 2 on a bad argument and so does an inventory that wrote
+    its report and wants a human to read some rows, and the case statement maps
+    2 to a warning nobody reads. A sibling product shipped three releases with
+    no inventory in them that way: the path it was given did not exist, and
+    every run said "warning" and went on. The presence of the file can tell the
+    two apart where the exit code cannot.
+    """
+    run = step_named(build_steps(load_workflow()), "Inventory what the bundle ships")["run"]
+    assert '[ ! -s "$report" ]' in run
+    assert "exit 1" in run
