@@ -20,6 +20,12 @@ deliberately summarised rather than itemised.
   shipped three releases with no inventory in them that way — the path it was
   given did not exist and every run said "warning" and carried on. The presence
   of the file can tell the two apart where the exit code cannot.
+- **The Windows archive is written to an absolute path.** It was compressed to
+  a destination one level up from the staging directory, which lands in the
+  workspace only while that directory sits exactly one level down. Orion and
+  XIP nested theirs deeper and both releases failed on "no such file" with the
+  archive sitting a directory away. Nothing was wrong here, and nothing is
+  wrong here now for a reason that cannot change underneath it.
 
 ### Documentation
 
