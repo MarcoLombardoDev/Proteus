@@ -20,6 +20,13 @@ deliberately summarised rather than itemised.
   shipped three releases with no inventory in them that way — the path it was
   given did not exist and every run said "warning" and carried on. The presence
   of the file can tell the two apart where the exit code cannot.
+- **The console says what the wait actually is.** It said the first launch was
+  the slow one because Windows checks every file before running any of them,
+  which was true of a folder build. This is one file that unpacks itself into
+  a temporary folder before it runs, so the wait is there on *every* start —
+  the first one longer still, for the reason the old message gave. Somebody
+  watching a console that promises the delay is a one-off, twice, has been
+  told something false about their own computer.
 - **The Windows archive is written to an absolute path.** It was compressed to
   a destination one level up from the staging directory, which lands in the
   workspace only while that directory sits exactly one level down. Orion and
